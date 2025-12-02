@@ -3,25 +3,27 @@ render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_sc
 
 uniform sampler2D texture_grass : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D texture_rock : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D texture_sand : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D texture_snow : source_color, filter_linear_mipmap, repeat_enable;
 
-uniform float uv_scale = 0.5;
-uniform float slope_threshold : hint_range(0.0, 1.0) = 0.5;
+uniform float uv_scale = 1.0;
+uniform float slope_threshold : hint_range(0.0, 1.0) = 0.7;
 uniform float slope_blend : hint_range(0.0, 1.0) = 0.1;
+
+uniform float sand_height = 2.0;
+uniform float sand_blend = 1.0;
+uniform float snow_height = 12.0;
+uniform float snow_blend = 4.0;
 
 varying vec3 uv1_triplanar_pos;
 varying vec3 uv1_power_normal;
+varying vec3 uv1_world_pos;
 
 void vertex() {
-	// Triplanar mapping requires world position and world normal
-	// But in Godot spatial shaders, VERTEX is local. 
-	// We can use model matrix to get world pos if needed, or just use local if chunks are static.
-	// However, since chunks are separate meshes, we want world-space texture alignment so they match at borders.
-	
 	vec3 world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	uv1_triplanar_pos = world_pos * uv_scale;
+	uv1_world_pos = world_pos;
 	
-	// World normal for triplanar weights
-	// MODEL_NORMAL_MATRIX transforms normal to world space
 	uv1_power_normal = pow(abs(mat3(MODEL_MATRIX) * NORMAL), vec3(4.0));
 	uv1_power_normal /= dot(uv1_power_normal, vec3(1.0));
 }
@@ -37,30 +39,34 @@ vec4 triplanar_texture(sampler2D p_sampler, vec3 p_weights, vec3 p_triplanar_pos
 void fragment() {
 	vec4 grass_col = triplanar_texture(texture_grass, uv1_power_normal, uv1_triplanar_pos);
 	vec4 rock_col = triplanar_texture(texture_rock, uv1_power_normal, uv1_triplanar_pos);
-	
-	// Calculate slope. 
-	// NORMAL is in View Space in fragment shader by default in Godot 4.
-	// We need it in World Space to compare with Up vector.
-	// Actually, we can use the varying normal passed or transform back.
-	// But wait, in Godot 4 spatial shader:
-	// "NORMAL" is in View Space.
-	// We want the steepness relative to the world Up (0,1,0).
-	// The View Matrix transforms World to View. Inverse View transforms View to World.
+	vec4 sand_col = triplanar_texture(texture_sand, uv1_power_normal, uv1_triplanar_pos);
+	vec4 snow_col = triplanar_texture(texture_snow, uv1_power_normal, uv1_triplanar_pos);
 	
 	vec3 world_normal = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	float slope = abs(dot(world_normal, vec3(0.0, 1.0, 0.0))); // 1.0 = Flat, 0.0 = Vertical wall
 	
-	// Smoothstep for nicer blending
-	// slope_threshold defines where the rock starts.
-	// e.g. 0.7: anything flatter than 0.7 dot is grass.
-	// We want Walls (low dot) to be Rock.
+	// 1. Rock vs Grass (Slope based)
+	float slope_mix = smoothstep(slope_threshold - slope_blend, slope_threshold + slope_blend, slope);
+	vec3 base_albedo = mix(rock_col.rgb, grass_col.rgb, slope_mix);
+	float roughness = mix(0.8, 0.6, slope_mix); // Rock rougher(0.8) than grass(0.6)? Or reversed.
 	
-	// If slope (dot) < threshold, it's rock.
-	float mix_factor = smoothstep(slope_threshold - slope_blend, slope_threshold + slope_blend, slope);
+	// 2. Sand (Height based, bottom)
+	// Appears below sand_height.
+	float sand_mix = 1.0 - smoothstep(sand_height - sand_blend, sand_height + sand_blend, uv1_world_pos.y);
+	// Sand overrides everything at bottom
+	base_albedo = mix(base_albedo, sand_col.rgb, sand_mix);
+	roughness = mix(roughness, 0.9, sand_mix); // Sand is rough
 	
-	ALBEDO = mix(rock_col.rgb, grass_col.rgb, mix_factor);
+	// 3. Snow (Height based, top)
+	// Appears above snow_height.
+	// Only settles on flat surfaces (slope_mix is high for flat)
+	float snow_height_mix = smoothstep(snow_height - snow_blend, snow_height + snow_blend, uv1_world_pos.y);
+	float snow_final_mix = snow_height_mix * slope_mix; // Only on flat parts
 	
-	// Simple roughness/metallic
-	ROUGHNESS = mix(0.6, 0.8, mix_factor); // Rock is smoother? or rougher? Adjust as needed.
+	base_albedo = mix(base_albedo, snow_col.rgb, snow_final_mix);
+	roughness = mix(roughness, 0.3, snow_final_mix); // Snow is smoother/shinier
+	
+	ALBEDO = base_albedo;
+	ROUGHNESS = roughness;
 	SPECULAR = 0.5;
 }

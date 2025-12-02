@@ -68,12 +68,19 @@ func _ready():
 	
 	var tex_grass = load("res://green-grass-texture.jpg")
 	var tex_rock = load("res://rocky-texture.jpg")
+	var tex_sand = load("res://sand-texture.jpg")
+	var tex_snow = load("res://snow-texture.jpg")
 	
 	terrain_material.set_shader_parameter("texture_grass", tex_grass)
 	terrain_material.set_shader_parameter("texture_rock", tex_rock)
+	terrain_material.set_shader_parameter("texture_sand", tex_sand)
+	terrain_material.set_shader_parameter("texture_snow", tex_snow)
+	
 	terrain_material.set_shader_parameter("uv_scale", 1.0) # Adjust scale as needed
 	terrain_material.set_shader_parameter("slope_threshold", 0.7)
 	terrain_material.set_shader_parameter("slope_blend", 0.1)
+	terrain_material.set_shader_parameter("sand_height", 2.0)
+	terrain_material.set_shader_parameter("snow_height", 12.0)
 	
 	# Create and start SINGLE compute thread
 	# We only use 1 thread because RIDs (Buffers) are bound to the RD instance,

@@ -71,7 +71,7 @@ func _ready():
 	
 	terrain_material.set_shader_parameter("texture_grass", tex_grass)
 	terrain_material.set_shader_parameter("texture_rock", tex_rock)
-	terrain_material.set_shader_parameter("uv_scale", 0.1) # Adjust scale as needed
+	terrain_material.set_shader_parameter("uv_scale", 1.0) # Adjust scale as needed
 	terrain_material.set_shader_parameter("slope_threshold", 0.7)
 	terrain_material.set_shader_parameter("slope_blend", 0.1)
 	

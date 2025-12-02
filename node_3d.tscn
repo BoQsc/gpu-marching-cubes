@@ -57,7 +57,7 @@ use_collision = true
 [node name="CharacterBody3D" type="CharacterBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 57.57989, 0)
 script = ExtResource("1_a202f")
-start_position = Vector3(9000, 600, 0)
+start_position = Vector3(9100, 60, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D"]
 shape = SubResource("CapsuleShape3D_noarx")

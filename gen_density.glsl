@@ -130,13 +130,20 @@ float get_testing_biome_height(vec2 p) {
     height += boulder_h;
     
     // 2. Small Oases / Hollows
-    // Scattered depressions in the plains (freq 0.035)
-    float n_oasis = noise(p * 0.035 + vec2(12.5, 4.1)); // Offset to decorrelate
-    // Dig down 6m
-    float oasis_depth = smoothstep(0.4, 0.8, n_oasis) * 6.0;
+    // Scattered depressions in the plains (freq 0.04)
+    float n_oasis = noise(p * 0.04 + vec2(12.5, 4.1)); 
+    // Dig down 6m - Relaxed threshold to make them more common
+    float oasis_depth = smoothstep(0.2, 0.6, n_oasis) * 6.0;
     
     // Apply mostly in flat areas (not on top of big mountains)
     height -= oasis_depth * (1.0 - mountain_mask);
+    
+    // 3. Pocket Valleys
+    // Deeper, slightly larger depressions that can carve into hills (freq 0.025)
+    float n_valley = noise(p * 0.025 + vec2(50.0, 50.0));
+    // Dig down 9m - Relaxed threshold to make them frequent
+    float valley_depth = smoothstep(0.25, 0.65, n_valley) * 9.0;
+    height -= valley_depth;
     
     // Add Micro-Detail everywhere
     height += detail;

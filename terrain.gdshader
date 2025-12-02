@@ -78,9 +78,9 @@ void fragment() {
 	// Coastal Archipelago Texturing
 	
 	// The heightmap pushes "ocean" areas down. The "shelf" drop happens as height approaches 0.
-	// So the beach line should be just above that drop.
-	float beach_level = 2.0; 
-	float beach_transition = 2.0; // range of blend
+	// Water is at Y=11. Beach should start appearing around Y=13 and go down.
+	float beach_level = 11.5; 
+	float beach_transition = 2.5; // range of blend
 	
 	// 0.0 = Full Sand, 1.0 = Full Grass
 	float grass_mix = smoothstep(beach_level, beach_level + beach_transition, world_pos.y);

@@ -98,7 +98,7 @@ float get_testing_biome_height(vec2 p) {
     // 4. Ridged Mountains (Warped & Terraced)
     // Using 'q' here makes the mountains follow the warped flow
     float ridge_raw = 1.0 - abs(noise(q * 0.015));
-    ridge_raw = ridge_raw * ridge_raw * ridge_raw; // Sharpen more
+    ridge_raw = ridge_raw * ridge_raw; // Squared instead of Cubed -> Softer peaks
     
     // Subtle Terracing (Strata)
     float strata = ridge_raw * 10.0;
@@ -126,7 +126,7 @@ float get_testing_biome_height(vec2 p) {
     // Scattered rocky outcrops (freq 0.06)
     float n_boulder = noise(p * 0.06);
     // Only keep the top 40% of peaks, sharp transition
-    float boulder_h = smoothstep(0.4, 0.8, n_boulder) * 4.0;
+    float boulder_h = smoothstep(0.4, 0.8, n_boulder) * 3.0; // Slightly reduced height
     height += boulder_h;
     
     // 2. Small Oases / Hollows
@@ -144,6 +144,14 @@ float get_testing_biome_height(vec2 p) {
     // Dig down 9m - Relaxed threshold to make them frequent
     float valley_depth = smoothstep(0.25, 0.65, n_valley) * 9.0;
     height -= valley_depth;
+    
+    // 4. Tiny Island Pockets
+    // Clusters of small, rough peaks (Mini-Archipelagos or Rocky Patches)
+    // Mask freq 0.015 (Rare spots)
+    float n_pocket_mask = smoothstep(0.6, 0.9, noise(p * 0.015 + vec2(80.0, -20.0)));
+    // Detail freq 0.08 (Tiny mountains)
+    float n_tiny_mtn = noise(p * 0.08) * 6.0;
+    height += n_pocket_mask * n_tiny_mtn;
     
     // Add Micro-Detail everywhere
     height += detail;

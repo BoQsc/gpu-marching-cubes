@@ -80,10 +80,15 @@ func _ready():
 	compute_thread = Thread.new()
 	compute_thread.start(_thread_function)
 
+var frame_counter: int = 0
+
 func _process(_delta):
 	if not viewer:
 		return
-	update_chunks()
+	
+	frame_counter += 1
+	if frame_counter % 10 == 0:
+		update_chunks()
 
 func _unhandled_input(event):
 	if event is InputEventMouseButton and event.pressed:

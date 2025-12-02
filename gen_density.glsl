@@ -61,12 +61,15 @@ float get_desert_height(vec2 p) {
     // Dune shape: Sharp ridges using sin/cos and absolute values
     float dune = abs(sin(p.x * 0.05) + sin(p.y * 0.05 + p.x * 0.02));
     dune += abs(sin(p.x * 0.1 + 1.0) + sin(p.y * 0.1 + 2.0)) * 0.5;
-    return dune * 10.0; // 10m dunes
+    return dune * 5.0; // Reduced to 5m dunes for flatter feel
 }
 
 float get_grass_height(vec2 p) {
     // Rolling hills: Low frequency, simple noise
-    return noise(p * 0.01) * 20.0 + noise(p * 0.03) * 5.0;
+    // Map noise to [0,1] and reduce amplitude for more baseline flat terrain
+    float primary_hills = ((noise(p * 0.004) + 1.0) * 0.5) * 10.0; // Max height 10m
+    float secondary_detail = ((noise(p * 0.015) + 1.0) * 0.5) * 2.0;  // Max height 2m
+    return primary_hills + secondary_detail;
 }
 
 float get_wasteland_height(vec2 p) {

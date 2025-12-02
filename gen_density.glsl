@@ -153,6 +153,19 @@ float get_testing_biome_height(vec2 p) {
     float n_tiny_mtn = noise(p * 0.08) * 3.0;
     height += n_pocket_mask * n_tiny_mtn;
     
+    // --- NEW: Mid-Level Rock Pools ---
+    // Target areas that are "mid-level" (above beach, below high peaks)
+    // Roughly height 3.0 to 10.0
+    float mid_level_mask = smoothstep(3.0, 5.0, height) * (1.0 - smoothstep(8.0, 12.0, height));
+    
+    // Frequent small dips (freq 0.08)
+    float n_pool = noise(p * 0.08 + vec2(33.0, -10.0));
+    // Sharp, distinct small holes
+    float pool_depth = smoothstep(0.4, 0.8, n_pool) * 2.5; 
+    
+    // Apply only in mid-level zones
+    height -= pool_depth * mid_level_mask;
+    
     // Add Micro-Detail everywhere
     height += detail;
     

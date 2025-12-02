@@ -81,49 +81,58 @@ float get_wasteland_height(vec2 p) {
 }
 
 float get_testing_biome_height(vec2 p) {
-    // --- Coastal Archipelago / Detailed Terrain ---
+    // --- Detailed Character Terrain ---
     
-    // 1. Continent Shape (The "Mask")
-    // Low frequency to define Land vs Water
-    // Values < 0 will be water, > 0 land.
-    float continent = noise(p * 0.0015);
+    // 1. Domain Warping (The "Character")
+    // Twist the coordinate space for mountains to make them look organic/flowy
+    vec2 q = p;
+    q.x += fbm(p * 0.004, 2) * 20.0;
+    q.y += fbm(p * 0.004 + vec2(5.2, 1.3), 2) * 20.0;
     
-    // 2. "Small Mountainous" Detail
-    // Higher frequency, using abs() to create sharp ridges (Ridged Noise)
-    // This gives the "unique small terrain" look.
-    float ridge = 1.0 - abs(noise(p * 0.01)); // 0..1 range roughly (inverted ridges)
-    ridge = ridge * ridge; // Sharpen the ridges
+    // 2. Mountain Mask (Warped)
+    float mountain_mask = smoothstep(-0.2, 0.5, noise(q * 0.003));
     
-    // 3. General Rolling variation
-    float rolling = noise(p * 0.005);
+    // 3. Continent Shape (Base)
+    float continent = noise(p * 0.002); // Slightly higher freq than before
     
-    // Combine:
+    // 4. Ridged Mountains (Warped & Terraced)
+    // Using 'q' here makes the mountains follow the warped flow
+    float ridge_raw = 1.0 - abs(noise(q * 0.015));
+    ridge_raw = ridge_raw * ridge_raw * ridge_raw; // Sharpen more
+    
+    // Subtle Terracing (Strata)
+    float strata = ridge_raw * 10.0;
+    float terraced = mix(ridge_raw, floor(strata) / 10.0, 0.3); // 30% terracing look
+    float ridge = terraced;
+    
+    // 5. Rolling Hills (Base P)
+    float rolling = noise(p * 0.008);
+    
+    // 6. Micro-Detail (The "Texture")
+    // High freq noise to break up flat polygons
+    float detail = fbm(p * 0.1, 2) * 0.4; 
+    
     float height = 0.0;
     
-    // Base landmass height (Compressed to fit 0-32 chunk limit)
-    // Base is 15. Max additive here should be < 16.
-    height += continent * 7.0; 
+    // Base Landmass
+    height += continent * 7.0;
     
-    // Add ridges
-    height += ridge * 4.0;
+    // Dynamic Detail Blend
+    height += mix(rolling * 2.0, ridge * 8.0, mountain_mask);
     
-    // Add rolling hills
-    height += rolling * 2.0;
+    // Add Micro-Detail everywhere
+    height += detail;
     
-    // Explicit "Beach Floor" drop
-    // Drop 8m when approaching water level
-    float shelf = smoothstep(5.0, 0.0, height); 
-    height -= shelf * 8.0; 
+    // --- Dynamic Shoreline Logic ---
+    float drop_start = 4.0; 
+    float sharpness = mix(5.0, 0.2, mountain_mask); // Sharper cliffs in warped mountains
+    
+    float shelf = smoothstep(drop_start, drop_start - sharpness, height);
+    float drop_amount = 10.0; 
+    height -= shelf * drop_amount;
     
     // --- SAFETY CLAMPS ---
-    
-    // 1. Bottom Safety: Prevent holes in the ocean floor.
-    // Base is 15. If height is -15, Y=0. We clamp to -12 (Y=3 minimum).
     height = max(height, -12.0);
-    
-    // 2. Top Safety: Prevent holes in the sky (mountains cutting off).
-    // Base is 15. Chunk top is 32. Max safe height is ~30 (relative +15).
-    // We clamp relative height to 15.0 (Total Y=30).
     height = min(height, 15.0);
     
     return height;

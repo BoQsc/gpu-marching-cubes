@@ -81,106 +81,103 @@ float get_wasteland_height(vec2 p) {
 }
 
 float get_testing_biome_height(vec2 p) {
-    // --- Detailed Character Terrain ---
+    // --- Consolidated Detailed Terrain ---
     
-    // 1. Domain Warping (The "Character")
-    // Twist the coordinate space for mountains to make them look organic/flowy
+    // 1. Domain Warping
     vec2 q = p;
     q.x += fbm(p * 0.004, 2) * 20.0;
     q.y += fbm(p * 0.004 + vec2(5.2, 1.3), 2) * 20.0;
+
+    // 2. Masks
+    // Mountain Mask: Increased threshold (0.2 -> 0.7) for LESS frequent large mountains
+    float mountain_mask = smoothstep(0.2, 0.7, noise(q * 0.003));
     
-    // 2. Mountain Mask (Warped)
-    float mountain_mask = smoothstep(-0.2, 0.5, noise(q * 0.003));
-    
-    // 3. Continent Shape (Base)
-    float continent = noise(p * 0.002); // Slightly higher freq than before
-    
-    // 4. "Mountains" (Now Smooth Hills/Highlands)
-    // Removed sharp ridges (1.0 - abs(n)) in favor of smooth, bulky shapes
-    float ridge_raw = noise(q * 0.015) * 0.5 + 0.5; // 0..1 smooth range
-    
-    // Subtle Terracing (Strata) - kept for texture but applied to smooth form
+    // Residential Mask (NEW): Areas designated for flat, walkable ground
+    // Freq 0.002
+    float residential_mask = smoothstep(0.1, 0.6, noise(p * 0.002 + vec2(90.0, -90.0)));
+
+    // 3. Base Continent (More Water)
+    // Subtract 1.5 to lower land, widening ocean basins significantly
+    float continent = noise(p * 0.002) * 7.0 - 1.5; 
+
+    // 4. Main Terrain Shapes
+    // Smooth Mountains (Warped)
+    float ridge_raw = noise(q * 0.015) * 0.5 + 0.5;
     float strata = ridge_raw * 10.0;
-    float terraced = mix(ridge_raw, floor(strata) / 10.0, 0.3); 
-    float ridge = terraced;
+    float ridge = mix(ridge_raw, floor(strata) / 10.0, 0.3);
     
-    // 5. Rolling Hills (Base P)
+    // Rolling Hills
     float rolling = noise(p * 0.008);
     
-    // 6. Micro-Detail (The "Texture")
-    // High freq noise to break up flat polygons
-    float detail = fbm(p * 0.1, 2) * 0.4; 
-    
+    // Flatland (for Residential)
+    float flatland = noise(p * 0.01) * 0.2; // Very flat
+
+    // 5. Combine Base
     float height = 0.0;
+    height += continent;
+
+    // Calculate primary detail (Hills vs Mountains)
+    float terrain_detail = mix(rolling * 2.0, ridge * 8.0, mountain_mask);
     
-    // Base Landmass
-    height += continent * 7.0;
+    // Apply Residential Flattening
+    // If residential, blend towards 'flatland' and boost height slightly (+2.5) 
+    // to ensure these clearings are above water level.
+    float final_detail = mix(terrain_detail, flatland + 2.5, residential_mask);
+
+    height += final_detail;
+
+    // 6. Add Detailed Features (Restored & Integrated)
     
-    // Dynamic Detail Blend
-    height += mix(rolling * 2.0, ridge * 8.0, mountain_mask);
-    
-    // --- NEW: Intermediate Features ---
-    
-    // 1. Small Mountainous / Boulders (Softened)
-    // Scattered rocky outcrops (freq 0.06)
+    // Boulders (Softened)
     float n_boulder = noise(p * 0.06);
-    // Wider transition for smoother lumps, reduced height (1.5)
     float boulder_h = smoothstep(0.3, 0.9, n_boulder) * 1.5;
-    height += boulder_h;
-    
-    // 2. Small Oases / Hollows
-    // Scattered depressions in the plains (freq 0.04)
+    // Suppress boulders slightly in residential areas for easier building/walking
+    height += boulder_h * (1.0 - residential_mask * 0.5);
+
+    // Oases (Hollows)
     float n_oasis = noise(p * 0.04 + vec2(12.5, 4.1)); 
-    // Dig down 6m - Relaxed threshold to make them more common
     float oasis_depth = smoothstep(0.2, 0.6, n_oasis) * 6.0;
-    
-    // Apply mostly in flat areas (not on top of big mountains)
     height -= oasis_depth * (1.0 - mountain_mask);
-    
-    // 3. Pocket Valleys
-    // Deeper, slightly larger depressions that can carve into hills (freq 0.025)
+
+    // Pocket Valleys
     float n_valley = noise(p * 0.025 + vec2(50.0, 50.0));
-    // Dig down 9m - Relaxed threshold to make them frequent
     float valley_depth = smoothstep(0.25, 0.65, n_valley) * 9.0;
     height -= valley_depth;
-    
-    // 4. Tiny Island Pockets (Softened)
-    // Clusters of small, rough peaks (Mini-Archipelagos or Rocky Patches)
-    // Mask freq 0.015 (Rare spots)
+
+    // Tiny Islands / Pockets (Mini Islands)
+    // These add small peaks. If in water -> Mini Islands. If on land -> Rocky patches.
     float n_pocket_mask = smoothstep(0.6, 0.9, noise(p * 0.015 + vec2(80.0, -20.0)));
-    // Detail freq 0.08 (Tiny mountains)
-    // Reduced height (6.0 -> 3.0) to avoid spikes
     float n_tiny_mtn = noise(p * 0.08) * 3.0;
     height += n_pocket_mask * n_tiny_mtn;
-    
-    // --- NEW: Mid-Level Rock Pools ---
-    // Target areas that are "mid-level" (above beach, below high peaks)
-    // Roughly height 3.0 to 10.0
+
+    // Rock Pools (Mid-level)
+    // Great for "hanging out" spots
     float mid_level_mask = smoothstep(3.0, 5.0, height) * (1.0 - smoothstep(8.0, 12.0, height));
-    
-    // Frequent small dips (freq 0.08)
     float n_pool = noise(p * 0.08 + vec2(33.0, -10.0));
-    // Sharp, distinct small holes
     float pool_depth = smoothstep(0.4, 0.8, n_pool) * 2.5; 
-    
-    // Apply only in mid-level zones
     height -= pool_depth * mid_level_mask;
+
+    // Micro-detail
+    height += fbm(p * 0.1, 2) * 0.4;
+
+    // 7. Shoreline
+    // Lower start (-1.0) allows low-lying flatlands near water
+    float drop_start = -1.0; 
     
-    // Add Micro-Detail everywhere
-    height += detail;
-    
-    // --- Dynamic Shoreline Logic ---
-    float drop_start = 4.0; 
-    float sharpness = mix(5.0, 0.2, mountain_mask); // Sharper cliffs in warped mountains
+    // Sharpness control:
+    // Mountains = Sharp Cliffs (0.5)
+    // Standard = Beaches (5.0)
+    // Residential = Very Gentle Beaches (6.0)
+    float sharpness = mix(5.0, 0.5, mountain_mask);
+    sharpness = mix(sharpness, 6.0, residential_mask);
     
     float shelf = smoothstep(drop_start, drop_start - sharpness, height);
-    float drop_amount = 10.0; 
-    height -= shelf * drop_amount;
-    
-    // --- SAFETY CLAMPS ---
+    height -= shelf * 8.0;
+
+    // Clamps
     height = max(height, -12.0);
     height = min(height, 15.0);
-    
+
     return height;
 }
 

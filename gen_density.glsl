@@ -95,14 +95,13 @@ float get_testing_biome_height(vec2 p) {
     // 3. Continent Shape (Base)
     float continent = noise(p * 0.002); // Slightly higher freq than before
     
-    // 4. Ridged Mountains (Warped & Terraced)
-    // Using 'q' here makes the mountains follow the warped flow
-    float ridge_raw = 1.0 - abs(noise(q * 0.015));
-    ridge_raw = ridge_raw * ridge_raw; // Squared instead of Cubed -> Softer peaks
+    // 4. "Mountains" (Now Smooth Hills/Highlands)
+    // Removed sharp ridges (1.0 - abs(n)) in favor of smooth, bulky shapes
+    float ridge_raw = noise(q * 0.015) * 0.5 + 0.5; // 0..1 smooth range
     
-    // Subtle Terracing (Strata)
+    // Subtle Terracing (Strata) - kept for texture but applied to smooth form
     float strata = ridge_raw * 10.0;
-    float terraced = mix(ridge_raw, floor(strata) / 10.0, 0.3); // 30% terracing look
+    float terraced = mix(ridge_raw, floor(strata) / 10.0, 0.3); 
     float ridge = terraced;
     
     // 5. Rolling Hills (Base P)
@@ -122,11 +121,11 @@ float get_testing_biome_height(vec2 p) {
     
     // --- NEW: Intermediate Features ---
     
-    // 1. Small Mountainous / Boulders
+    // 1. Small Mountainous / Boulders (Softened)
     // Scattered rocky outcrops (freq 0.06)
     float n_boulder = noise(p * 0.06);
-    // Only keep the top 40% of peaks, sharp transition
-    float boulder_h = smoothstep(0.4, 0.8, n_boulder) * 3.0; // Slightly reduced height
+    // Wider transition for smoother lumps, reduced height (1.5)
+    float boulder_h = smoothstep(0.3, 0.9, n_boulder) * 1.5;
     height += boulder_h;
     
     // 2. Small Oases / Hollows
@@ -145,12 +144,13 @@ float get_testing_biome_height(vec2 p) {
     float valley_depth = smoothstep(0.25, 0.65, n_valley) * 9.0;
     height -= valley_depth;
     
-    // 4. Tiny Island Pockets
+    // 4. Tiny Island Pockets (Softened)
     // Clusters of small, rough peaks (Mini-Archipelagos or Rocky Patches)
     // Mask freq 0.015 (Rare spots)
     float n_pocket_mask = smoothstep(0.6, 0.9, noise(p * 0.015 + vec2(80.0, -20.0)));
     // Detail freq 0.08 (Tiny mountains)
-    float n_tiny_mtn = noise(p * 0.08) * 6.0;
+    // Reduced height (6.0 -> 3.0) to avoid spikes
+    float n_tiny_mtn = noise(p * 0.08) * 3.0;
     height += n_pocket_mask * n_tiny_mtn;
     
     // Add Micro-Detail everywhere

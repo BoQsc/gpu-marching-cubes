@@ -74,35 +74,19 @@ void fragment() {
 	vec3 col_sand = triplanar_texture(texture_sand, weights, uv_pos).rgb;
 	vec3 col_snow = triplanar_texture(texture_snow, weights, uv_pos).rgb;
 	
-	// --- Biome Logic ---
-	// Use world X/Z to pick a biome value [-1, 1]
-	// Matches gen_density.glsl biome map (2 octaves)
-	float biome_val = fbm(world_pos.xz * biome_scale, 2);
+	// --- Testing Biome Logic ---
+	// Coastal Archipelago Texturing
 	
-	// Biome Thresholds (Matching gen_density.glsl):
-	// < -0.4 : Desert (Sand)
-	// -0.4 to -0.1 : Transition Desert -> Grass
-	// -0.1 to 0.3 : Grass
-	// 0.3 to 0.6 : Transition Grass -> Wasteland
-	// > 0.6 : Wasteland
+	// The heightmap pushes "ocean" areas down. The "shelf" drop happens as height approaches 0.
+	// So the beach line should be just above that drop.
+	float beach_level = 2.0; 
+	float beach_transition = 2.0; // range of blend
 	
-	vec3 biome_color = col_grass; // Default Center Biome
+	// 0.0 = Full Sand, 1.0 = Full Grass
+	float grass_mix = smoothstep(beach_level, beach_level + beach_transition, world_pos.y);
 	
-	// --- Mix Desert (Low Biome Val) ---
-	// When biome_val is low (< -0.1), we fade to Sand
-	// smoothstep(-0.1, -0.4, biome_val) returns 0 at -0.1 and 1 at -0.4
-	float desert_mix = smoothstep(-0.1, -0.4, biome_val); 
-	biome_color = mix(biome_color, col_sand, desert_mix);
-	
-	// --- Mix Wasteland (High Biome Val) ---
-	// When biome_val is high (> 0.3), we fade to Wasteland
-	float wasteland_mix = smoothstep(0.3, 0.6, biome_val);
-	
-	// Wasteland Visuals: Darkened Rock/Gravel
-	vec3 col_wasteland = col_rock * vec3(0.6, 0.5, 0.5); // Reddish/Dark tint for "burned" look
-	
-	biome_color = mix(biome_color, col_wasteland, wasteland_mix);
-	
+	vec3 biome_color = mix(col_sand, col_grass, grass_mix);
+
 	// --- Slope Logic (Steep cliffs are rock) ---
 	// This applies on top of the biome base
 	float slope = normal.y;

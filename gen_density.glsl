@@ -80,34 +80,57 @@ float get_wasteland_height(vec2 p) {
     return mountain * 60.0;
 }
 
+float get_testing_biome_height(vec2 p) {
+    // --- Coastal Archipelago / Detailed Terrain ---
+    
+    // 1. Continent Shape (The "Mask")
+    // Low frequency to define Land vs Water
+    // Values < 0 will be water, > 0 land.
+    float continent = noise(p * 0.0015);
+    
+    // 2. "Small Mountainous" Detail
+    // Higher frequency, using abs() to create sharp ridges (Ridged Noise)
+    // This gives the "unique small terrain" look.
+    float ridge = 1.0 - abs(noise(p * 0.01)); // 0..1 range roughly (inverted ridges)
+    ridge = ridge * ridge; // Sharpen the ridges
+    
+    // 3. General Rolling variation
+    float rolling = noise(p * 0.005);
+    
+    // Combine:
+    // If continent is low, we want to be underwater.
+    // If continent is high, we add the ridges.
+    
+    float height = 0.0;
+    
+    // Base landmass height (approx 15m max)
+    height += continent * 20.0; 
+    
+    // Add ridges only where it's likely land (or close to it) to create interesting rocky islands
+    height += ridge * 10.0;
+    
+    // Add rolling hills for variety
+    height += rolling * 5.0;
+    
+    // Explicit "Beach Floor" drop
+    // If the combined height is low, we push it down faster to create a shelf for the water
+    // This creates the "Place for water/ocean"
+    // We assume water level is roughly at local height 0 relative to this function
+    // So we push anything below 2.0 down.
+    /*
+    if (height < 2.0) {
+        height -= 5.0; // Drop off to sea floor
+    }
+    */
+    // Smoother version of the shelf drop:
+    float shelf = smoothstep(5.0, 0.0, height); 
+    height -= shelf * 8.0; // Drop 8m when approaching water level
+    
+    return height;
+}
+
 float get_biome_height(vec3 world_pos) {
-    float biome_scale = 0.002;
-    // Calculate biome value (same logic as shader ideally)
-    // We use a separate low-freq noise for biome distribution
-    float biome_val = fbm(world_pos.xz * biome_scale, 2);
-    
-    // Biome Thresholds (matching plan):
-    // < -0.2 : Desert
-    // -0.2 to 0.2 : Transition
-    // 0.2 to 0.4 : Grass
-    // > 0.6 : Wasteland
-    
-    float h_desert = get_desert_height(world_pos.xz);
-    float h_grass = get_grass_height(world_pos.xz);
-    float h_wasteland = get_wasteland_height(world_pos.xz);
-    
-    float final_height = h_grass; // Default
-    
-    // Smooth blend between biomes
-    // Mix Desert -> Grass
-    float desert_mix = smoothstep(-0.4, -0.1, biome_val);
-    final_height = mix(h_desert, h_grass, desert_mix);
-    
-    // Mix Grass -> Wasteland
-    float wasteland_mix = smoothstep(0.3, 0.6, biome_val);
-    final_height = mix(final_height, h_wasteland, wasteland_mix);
-    
-    return final_height;
+    return get_testing_biome_height(world_pos.xz);
 }
 
 float get_density(vec3 pos) {

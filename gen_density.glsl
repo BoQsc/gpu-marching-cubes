@@ -98,33 +98,33 @@ float get_testing_biome_height(vec2 p) {
     float rolling = noise(p * 0.005);
     
     // Combine:
-    // If continent is low, we want to be underwater.
-    // If continent is high, we add the ridges.
-    
     float height = 0.0;
     
-    // Base landmass height (approx 15m max)
-    height += continent * 20.0; 
+    // Base landmass height (Compressed to fit 0-32 chunk limit)
+    // Base is 15. Max additive here should be < 16.
+    height += continent * 7.0; 
     
-    // Add ridges only where it's likely land (or close to it) to create interesting rocky islands
-    height += ridge * 10.0;
+    // Add ridges
+    height += ridge * 4.0;
     
-    // Add rolling hills for variety
-    height += rolling * 5.0;
+    // Add rolling hills
+    height += rolling * 2.0;
     
     // Explicit "Beach Floor" drop
-    // If the combined height is low, we push it down faster to create a shelf for the water
-    // This creates the "Place for water/ocean"
-    // We assume water level is roughly at local height 0 relative to this function
-    // So we push anything below 2.0 down.
-    /*
-    if (height < 2.0) {
-        height -= 5.0; // Drop off to sea floor
-    }
-    */
-    // Smoother version of the shelf drop:
+    // Drop 8m when approaching water level
     float shelf = smoothstep(5.0, 0.0, height); 
-    height -= shelf * 8.0; // Drop 8m when approaching water level
+    height -= shelf * 8.0; 
+    
+    // --- SAFETY CLAMPS ---
+    
+    // 1. Bottom Safety: Prevent holes in the ocean floor.
+    // Base is 15. If height is -15, Y=0. We clamp to -12 (Y=3 minimum).
+    height = max(height, -12.0);
+    
+    // 2. Top Safety: Prevent holes in the sky (mountains cutting off).
+    // Base is 15. Chunk top is 32. Max safe height is ~30 (relative +15).
+    // We clamp relative height to 15.0 (Total Y=30).
+    height = min(height, 15.0);
     
     return height;
 }

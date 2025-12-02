@@ -1,9 +1,13 @@
 extends CharacterBody3D
 
+@export var start_position: Vector3 = Vector3(0, 30, 0)
 
 const SPEED = 5.0
 const JUMP_VELOCITY = 4.5
 
+func _ready():
+	# Teleport to the configured starting position on launch
+	global_position = start_position
 
 func _physics_process(delta: float) -> void:
 	# Add the gravity.

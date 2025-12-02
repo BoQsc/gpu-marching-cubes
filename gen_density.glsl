@@ -120,6 +120,24 @@ float get_testing_biome_height(vec2 p) {
     // Dynamic Detail Blend
     height += mix(rolling * 2.0, ridge * 8.0, mountain_mask);
     
+    // --- NEW: Intermediate Features ---
+    
+    // 1. Small Mountainous / Boulders
+    // Scattered rocky outcrops (freq 0.06)
+    float n_boulder = noise(p * 0.06);
+    // Only keep the top 40% of peaks, sharp transition
+    float boulder_h = smoothstep(0.4, 0.8, n_boulder) * 4.0;
+    height += boulder_h;
+    
+    // 2. Small Oases / Hollows
+    // Scattered depressions in the plains (freq 0.035)
+    float n_oasis = noise(p * 0.035 + vec2(12.5, 4.1)); // Offset to decorrelate
+    // Dig down 6m
+    float oasis_depth = smoothstep(0.4, 0.8, n_oasis) * 6.0;
+    
+    // Apply mostly in flat areas (not on top of big mountains)
+    height -= oasis_depth * (1.0 - mountain_mask);
+    
     // Add Micro-Detail everywhere
     height += detail;
     

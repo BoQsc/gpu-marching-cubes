@@ -304,9 +304,9 @@ func process_generate(rd: RenderingDevice, task, sid_gen, sid_mesh):
 	rd.sync()
 	
 	# 3. Run Meshing
-	var mesh = run_meshing(rd, sid_mesh, density_buffer, chunk_pos, terrain_material)
+	var result = run_meshing(rd, sid_mesh, density_buffer, chunk_pos, terrain_material)
 	
-	call_deferred("complete_generation", task.coord, mesh, density_buffer)
+	call_deferred("complete_generation", task.coord, result, density_buffer)
 
 func process_modify(rd: RenderingDevice, task, sid_mod, sid_mesh):
 	var density_buffer = task.rid
@@ -338,12 +338,12 @@ func process_modify(rd: RenderingDevice, task, sid_mod, sid_mesh):
 	rd.sync()
 	
 	# 2. Re-Mesh
-	var mesh = run_meshing(rd, sid_mesh, density_buffer, chunk_pos, terrain_material)
+	var result = run_meshing(rd, sid_mesh, density_buffer, chunk_pos, terrain_material)
 	
 	var b_id = task.get("batch_id", -1)
 	var b_count = task.get("batch_count", 1)
 	
-	call_deferred("complete_modification", task.coord, mesh, b_id, b_count)
+	call_deferred("complete_modification", task.coord, result, b_id, b_count)
 
 func run_meshing(rd: RenderingDevice, sid_mesh, density_buffer, chunk_pos, material_instance: Material):
 	# Setup Output Buffers
@@ -394,19 +394,19 @@ func run_meshing(rd: RenderingDevice, sid_mesh, density_buffer, chunk_pos, mater
 	var count_bytes = rd.buffer_get_data(counter_buffer)
 	var tri_count = count_bytes.decode_u32(0)
 	
-	var mesh = null
+	var result = null
 	if tri_count > 0:
 		var total_floats = tri_count * 3 * 6
 		var vert_bytes = rd.buffer_get_data(vertex_buffer, 0, total_floats * 4)
 		var vert_floats = vert_bytes.to_float32_array()
-		mesh = build_mesh(vert_floats, material_instance)
+		result = build_mesh(vert_floats, material_instance)
 		
 	rd.free_rid(vertex_buffer)
 	rd.free_rid(counter_buffer)
 	
-	return mesh
+	return result
 
-func complete_generation(coord: Vector2i, mesh: ArrayMesh, density_buffer: RID):
+func complete_generation(coord: Vector2i, result, density_buffer: RID):
 	# If we were cancelled/removed while generating
 	if not active_chunks.has(coord):
 		# Queue free immediately
@@ -418,7 +418,7 @@ func complete_generation(coord: Vector2i, mesh: ArrayMesh, density_buffer: RID):
 		return
 		
 	var chunk_pos = Vector3(coord.x * CHUNK_STRIDE, 0, coord.y * CHUNK_STRIDE)
-	var node = create_chunk_node(mesh, chunk_pos)
+	var node = create_chunk_node(result, chunk_pos)
 	
 	var data = ChunkData.new()
 	data.node = node
@@ -426,9 +426,9 @@ func complete_generation(coord: Vector2i, mesh: ArrayMesh, density_buffer: RID):
 	
 	active_chunks[coord] = data
 
-func complete_modification(coord: Vector2i, mesh: ArrayMesh, batch_id: int = -1, batch_count: int = 1):
+func complete_modification(coord: Vector2i, result, batch_id: int = -1, batch_count: int = 1):
 	if batch_id == -1:
-		_apply_chunk_update(coord, mesh)
+		_apply_chunk_update(coord, result)
 		return
 	
 	if not pending_batches.has(batch_id):
@@ -439,14 +439,14 @@ func complete_modification(coord: Vector2i, mesh: ArrayMesh, batch_id: int = -1,
 	
 	# Store update only if chunk is still relevant
 	if active_chunks.has(coord):
-		batch.updates.append({ "coord": coord, "mesh": mesh })
+		batch.updates.append({ "coord": coord, "result": result })
 		
 	if batch.received >= batch.expected:
 		for update in batch.updates:
-			_apply_chunk_update(update.coord, update.mesh)
+			_apply_chunk_update(update.coord, update.result)
 		pending_batches.erase(batch_id)
 
-func _apply_chunk_update(coord: Vector2i, mesh: ArrayMesh):
+func _apply_chunk_update(coord: Vector2i, result):
 	if not active_chunks.has(coord):
 		return
 	
@@ -456,9 +456,15 @@ func _apply_chunk_update(coord: Vector2i, mesh: ArrayMesh):
 		data.node.queue_free()
 		
 	var chunk_pos = Vector3(coord.x * CHUNK_STRIDE, 0, coord.y * CHUNK_STRIDE)
-	data.node = create_chunk_node(mesh, chunk_pos)
+	data.node = create_chunk_node(result, chunk_pos)
 
-func create_chunk_node(mesh: ArrayMesh, position: Vector3) -> Node3D:
+func create_chunk_node(result, position: Vector3) -> Node3D:
+	if result == null or not (result is Dictionary):
+		return null
+		
+	var mesh = result.get("mesh")
+	var shape = result.get("shape")
+	
 	if mesh == null:
 		return null
 		
@@ -470,13 +476,16 @@ func create_chunk_node(mesh: ArrayMesh, position: Vector3) -> Node3D:
 	mesh_instance.mesh = mesh
 	static_body.add_child(mesh_instance)
 	
-	var collision_shape = CollisionShape3D.new()
-	collision_shape.shape = mesh.create_trimesh_shape()
-	static_body.add_child(collision_shape)
+	# Use the pre-generated shape from the thread!
+	# This avoids the main thread stall.
+	if shape:
+		var collision_shape = CollisionShape3D.new()
+		collision_shape.shape = shape
+		static_body.add_child(collision_shape)
 	
 	return static_body
 
-func build_mesh(data: PackedFloat32Array, material_instance: Material) -> ArrayMesh:
+func build_mesh(data: PackedFloat32Array, material_instance: Material) -> Dictionary:
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
@@ -488,4 +497,6 @@ func build_mesh(data: PackedFloat32Array, material_instance: Material) -> ArrayM
 		st.set_normal(n)
 		st.add_vertex(v)
 	
-	return st.commit()
+	var mesh = st.commit()
+	var shape = mesh.create_trimesh_shape()
+	return { "mesh": mesh, "shape": shape }

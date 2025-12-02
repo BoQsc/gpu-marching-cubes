@@ -53,7 +53,7 @@ float fbm(vec3 p) {
     float amp = 0.5;
     float freq = 1.0;
     
-    for (int i = 0; i < 4; i++) { // 4 octaves
+    for (int i = 0; i < 2; i++) { // Reduced octaves for performance
         f += snoise(p * freq) * amp;
         amp *= 0.5;
         freq *= 2.0;

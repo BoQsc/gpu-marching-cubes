@@ -36,10 +36,10 @@ float noise(vec2 p) {
 }
 
 // Fractal Brownian Motion for more natural biome shapes
-float fbm(vec2 p) {
+float fbm(vec2 p, int octaves) {
 	float f = 0.0;
 	float w = 0.5;
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < octaves; i++) {
 		f += w * noise(p);
 		p *= 2.0;
 		w *= 0.5;
@@ -76,29 +76,35 @@ void fragment() {
 	
 	// --- Biome Logic ---
 	// Use world X/Z to pick a biome value [-1, 1]
-	float biome_val = fbm(world_pos.xz * biome_scale);
+	// Matches gen_density.glsl biome map (2 octaves)
+	float biome_val = fbm(world_pos.xz * biome_scale, 2);
 	
-	// Map biome_val to types:
-	// < -0.3  : Desert (Sand)
-	// -0.3 to 0.2 : Grass
-	// 0.2 to 0.6 : Gravel/Rock (Mountain base?)
-	// > 0.6   : Snow Biome (Tundra)
+	// Biome Thresholds (Matching gen_density.glsl):
+	// < -0.4 : Desert (Sand)
+	// -0.4 to -0.1 : Transition Desert -> Grass
+	// -0.1 to 0.3 : Grass
+	// 0.3 to 0.6 : Transition Grass -> Wasteland
+	// > 0.6 : Wasteland
 	
-	vec3 biome_color = col_grass; // Default
+	vec3 biome_color = col_grass; // Default Center Biome
 	
-	// Mix Sand -> Grass
-	float sand_mix = smoothstep(-0.2, -0.4, biome_val); // Fade into sand as value gets lower
-	biome_color = mix(biome_color, col_sand, sand_mix);
+	// --- Mix Desert (Low Biome Val) ---
+	// When biome_val is low (< -0.1), we fade to Sand
+	// smoothstep(-0.1, -0.4, biome_val) returns 0 at -0.1 and 1 at -0.4
+	float desert_mix = smoothstep(-0.1, -0.4, biome_val); 
+	biome_color = mix(biome_color, col_sand, desert_mix);
 	
-	// Mix Grass -> Gravel (Rock)
-	float gravel_mix = smoothstep(0.2, 0.4, biome_val);
-	biome_color = mix(biome_color, col_rock, gravel_mix);
+	// --- Mix Wasteland (High Biome Val) ---
+	// When biome_val is high (> 0.3), we fade to Wasteland
+	float wasteland_mix = smoothstep(0.3, 0.6, biome_val);
 	
-	// Mix Gravel -> Snow Biome
-	float snow_biome_mix = smoothstep(0.6, 0.8, biome_val);
-	biome_color = mix(biome_color, col_snow, snow_biome_mix);
+	// Wasteland Visuals: Darkened Rock/Gravel
+	vec3 col_wasteland = col_rock * vec3(0.6, 0.5, 0.5); // Reddish/Dark tint for "burned" look
+	
+	biome_color = mix(biome_color, col_wasteland, wasteland_mix);
 	
 	// --- Slope Logic (Steep cliffs are rock) ---
+	// This applies on top of the biome base
 	float slope = normal.y;
 	float cliff_mix = 1.0 - smoothstep(0.5, 0.7, slope);
 	biome_color = mix(biome_color, col_rock, cliff_mix);

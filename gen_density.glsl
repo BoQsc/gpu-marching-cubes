@@ -81,98 +81,92 @@ float get_wasteland_height(vec2 p) {
 }
 
 float get_testing_biome_height(vec2 p) {
-    // --- Consolidated Detailed Terrain ---
+    // --- Clean, Walkable Coastal Terrain ---
     
-    // 1. Domain Warping
+    // 1. Domain Warping (Organic Flow)
     vec2 q = p;
     q.x += fbm(p * 0.004, 2) * 20.0;
     q.y += fbm(p * 0.004 + vec2(5.2, 1.3), 2) * 20.0;
 
     // 2. Masks
-    // Mountain Mask: Increased threshold (0.2 -> 0.7) for LESS frequent large mountains
+    // Mountain Mask: Restricts large hills/mountains to specific zones
     float mountain_mask = smoothstep(0.2, 0.7, noise(q * 0.003));
     
-    // Residential Mask (NEW): Areas designated for flat, walkable ground
-    // Freq 0.002
+    // Residential Mask: Defines vast, flat, habitable areas
     float residential_mask = smoothstep(0.1, 0.6, noise(p * 0.002 + vec2(90.0, -90.0)));
 
-    // 3. Base Continent (More Water)
-    // Subtract 1.5 to lower land, widening ocean basins significantly
+    // 3. Base Continent
+    // Wide ocean basins, distinct landmasses
     float continent = noise(p * 0.002) * 7.0 - 1.5; 
 
-    // 4. Main Terrain Shapes
-    // Smooth Mountains (Warped)
+    // 4. Terrain Shapes (Positive Features Only)
+    
+    // Smooth Mountains (Bulky, not Spiky)
     float ridge_raw = noise(q * 0.015) * 0.5 + 0.5;
+    // Subtle terracing for visual texture
     float strata = ridge_raw * 10.0;
     float ridge = mix(ridge_raw, floor(strata) / 10.0, 0.3);
     
-    // Rolling Hills
+    // Gentle Rolling Hills
     float rolling = noise(p * 0.008);
     
-    // Flatland (for Residential)
-    float flatland = noise(p * 0.01) * 0.2; // Very flat
+    // Flatland (Residential Base)
+    float flatland = noise(p * 0.005) * 0.3; 
 
-    // 5. Combine Base
+    // 5. Combine Base Terrain
     float height = 0.0;
     height += continent;
 
-    // Calculate primary detail (Hills vs Mountains)
+    // Mix: Hills vs Mountains
     float terrain_detail = mix(rolling * 2.0, ridge * 8.0, mountain_mask);
     
-    // Apply Residential Flattening
-    // If residential, blend towards 'flatland' and boost height slightly (+2.5) 
-    // to ensure these clearings are above water level.
+    // Apply Residential Flattening (Crucial for "Walkable")
+    // Blend towards flatland, slightly raised (+2.5) to stay dry
     float final_detail = mix(terrain_detail, flatland + 2.5, residential_mask);
 
     height += final_detail;
 
-    // 6. Add Detailed Features (Restored & Integrated)
+    // 6. Small Scale "Unequal Things" (Positive Only - No Pits)
     
-    // Boulders (Softened)
-    float n_boulder = noise(p * 0.06);
-    float boulder_h = smoothstep(0.3, 0.9, n_boulder) * 1.5;
-    // Suppress boulders slightly in residential areas for easier building/walking
-    height += boulder_h * (1.0 - residential_mask * 0.5);
+    // Walkable "Hummocks" (Gentle Bumps)
+    // Freq 0.15, Height 0.6m
+    float n_mounds = noise(p * 0.15 + vec2(-20.0, 20.0)) * 0.6;
+    height += n_mounds;
 
-    // Oases (Hollows)
-    float n_oasis = noise(p * 0.04 + vec2(12.5, 4.1)); 
-    float oasis_depth = smoothstep(0.2, 0.6, n_oasis) * 6.0;
-    height -= oasis_depth * (1.0 - mountain_mask);
-
-    // Pocket Valleys
-    float n_valley = noise(p * 0.025 + vec2(50.0, 50.0));
-    float valley_depth = smoothstep(0.25, 0.65, n_valley) * 9.0;
-    height -= valley_depth;
-
-    // Tiny Islands / Pockets (Mini Islands)
-    // These add small peaks. If in water -> Mini Islands. If on land -> Rocky patches.
+    // Tiny Islands / Rocky Patches (Positive Bumps)
+    // Adds interest to water and land without digging
     float n_pocket_mask = smoothstep(0.6, 0.9, noise(p * 0.015 + vec2(80.0, -20.0)));
-    float n_tiny_mtn = noise(p * 0.08) * 3.0;
+    float n_tiny_mtn = noise(p * 0.08) * 2.5;
     height += n_pocket_mask * n_tiny_mtn;
 
-    // Rock Pools (Mid-level)
-    // Great for "hanging out" spots
-    float mid_level_mask = smoothstep(3.0, 5.0, height) * (1.0 - smoothstep(8.0, 12.0, height));
-    float n_pool = noise(p * 0.08 + vec2(33.0, -10.0));
-    float pool_depth = smoothstep(0.4, 0.8, n_pool) * 2.5; 
-    height -= pool_depth * mid_level_mask;
+    // Boulders (Scattered Positive Features)
+    float n_boulder = noise(p * 0.06);
+    float boulder_h = smoothstep(0.3, 0.9, n_boulder) * 1.5;
+    // Suppress boulders in residential zones for cleaner look
+    height += boulder_h * (1.0 - residential_mask * 0.8);
 
-    // Micro-detail
-    height += fbm(p * 0.1, 2) * 0.4;
+    // Micro-detail (Texture)
+    height += fbm(p * 0.1, 2) * 0.3;
 
-    // 7. Shoreline
-    // Lower start (-1.0) allows low-lying flatlands near water
+    // 7. Shoreline & Shallows
+    // Lower start allows low-lying flatlands near water
     float drop_start = -1.0; 
     
     // Sharpness control:
-    // Mountains = Sharp Cliffs (0.5)
-    // Standard = Beaches (5.0)
-    // Residential = Very Gentle Beaches (6.0)
-    float sharpness = mix(5.0, 0.5, mountain_mask);
-    sharpness = mix(sharpness, 6.0, residential_mask);
+    // Global Base = Very Gentle (8.0)
+    // Residential = Extremely Gentle (15.0) -> Long, nice beaches
+    // Mountains = Steeper (2.0) -> Cliffs
+    float sharpness = mix(8.0, 2.0, mountain_mask);
+    sharpness = mix(sharpness, 15.0, residential_mask);
     
     float shelf = smoothstep(drop_start, drop_start - sharpness, height);
-    height -= shelf * 8.0;
+    
+    // Variable Water Depth (Wadeable)
+    // Mix between 1.5m (Wadeable) and 8.0m (Deep)
+    float n_depth_var = noise(p * 0.03 + vec2(100.0, 0.0));
+    float water_depth = mix(1.5, 8.0, smoothstep(0.3, 0.7, n_depth_var));
+    
+    height -= shelf * water_depth;
 
     // Clamps
     height = max(height, -12.0);

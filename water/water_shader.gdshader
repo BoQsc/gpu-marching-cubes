@@ -89,5 +89,5 @@ void fragment() {
 	
 	// Refraction (Optional - needs offset)
 	// ALPHA = clamp(alpha + 0.1, 0.0, 1.0); // Ensure some visibility
-	ALPHA = clamp(alpha * 1.5, 0.2, 0.95); // Tweaked for visibility
+	ALPHA = clamp(alpha * 1.2, 0.05, 0.9); // Tweaked for visibility and transparency
 }

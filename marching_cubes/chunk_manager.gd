@@ -100,7 +100,7 @@ func _ready():
 	water_material.set_shader_parameter("metallic", 0.1)
 	water_material.set_shader_parameter("roughness", 0.05)
 	water_material.set_shader_parameter("wave", noise_tex)
-	water_material.set_shader_parameter("beer_factor", 0.5)
+	water_material.set_shader_parameter("beer_factor", 0.15)
 	water_material.set_shader_parameter("foam_color", Color(1.0, 1.0, 1.0, 1.0))
 	# Important: Marching Cubes mesh is usually double-sided or enclosed. 
 	# Culling might need adjustment in shader, but default is usually Back.

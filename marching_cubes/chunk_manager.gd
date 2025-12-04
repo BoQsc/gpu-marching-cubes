@@ -80,9 +80,28 @@ func _ready():
 	var water_shader = load("res://water/water_shader.gdshader")
 	water_material = ShaderMaterial.new()
 	water_material.shader = water_shader
-	water_material.set_shader_parameter("water_color", Color(0.0, 0.33, 0.82, 0.3))
-	water_material.set_shader_parameter("metallic", 0.5)
-	water_material.set_shader_parameter("roughness", 0.1)
+	
+	# Create a noise texture for water waves
+	var noise = FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	noise.frequency = 0.05
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	
+	var noise_tex = NoiseTexture2D.new()
+	noise_tex.noise = noise
+	noise_tex.seamless = true
+	noise_tex.width = 256
+	noise_tex.height = 256
+	# Await texture generation if possible, but in _ready we can't await easily without blocking.
+	# NoiseTexture2D generates on a thread by default.
+	
+	water_material.set_shader_parameter("albedo", Color(0.0, 0.4, 0.6, 1.0))
+	water_material.set_shader_parameter("albedo_fresh", Color(0.0, 0.6, 0.8, 1.0))
+	water_material.set_shader_parameter("metallic", 0.1)
+	water_material.set_shader_parameter("roughness", 0.05)
+	water_material.set_shader_parameter("wave", noise_tex)
+	water_material.set_shader_parameter("beer_factor", 0.5)
+	water_material.set_shader_parameter("foam_color", Color(1.0, 1.0, 1.0, 1.0))
 	# Important: Marching Cubes mesh is usually double-sided or enclosed. 
 	# Culling might need adjustment in shader, but default is usually Back.
 	

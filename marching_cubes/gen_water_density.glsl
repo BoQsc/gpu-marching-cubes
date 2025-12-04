@@ -85,20 +85,15 @@ void main() {
     // If terrain_dens is negative (underground), we want to treat it as "Solid/Occupied".
     // We want water to be 'air' (positive) inside the rock.
     
-    // So: final = max(base_water, -terrain_dens)
-    // Example 1: Deep underwater, no rock.
-    // base_water = -10. terrain_dens = +50 (high above bedrock).
-    // max(-10, -50) = -10. Result: Water. Correct.
-    
-    // Example 2: Inside rock, underwater.
-    // base_water = -10. terrain_dens = -5 (5m underground).
-    // max(-10, -(-5)) = max(-10, +5) = +5. Result: Air. Correct. (Water is displaced).
-    
-    // Example 3: Above water, no rock.
-    // base_water = +10. terrain_dens = +50.
-    // max(+10, -50) = +10. Result: Air. Correct.
-    
-    float final_density = max(base_water, -terrain_dens);
+    // Fix Z-Fighting: Subtract a small epsilon from terrain_dens.
+    // terrain_dens < 0 is Ground. Subtracting makes it MORE negative (deeper ground).
+    // This effectively expands the "Ground" region slightly into the "Water" region.
+    // Since water is clipped by max(water, -terrain), expanding the negative terrain
+    // (making -terrain positive sooner) cuts the water off before it hits the visual mesh.
+    float terrain_dens_biased = terrain_dens - 0.05;
+
+    // final = max(base_water, -terrain_dens_biased)
+    float final_density = max(base_water, -terrain_dens_biased);
     
     water_buffer.values[index] = final_density;
 }

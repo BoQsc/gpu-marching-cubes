@@ -5,6 +5,8 @@
 [ext_resource type="Script" uid="uid://cje44f7r08sot" path="res://player_interaction.gd" id="3_interact"]
 [ext_resource type="Script" uid="uid://c1xwl5r0i1xs2" path="res://marching_cubes/chunk_manager.gd" id="4_terrain"]
 [ext_resource type="Script" uid="uid://bvdox6682bbj2" path="res://building_system/building_manager.gd" id="5_buildings"]
+[ext_resource type="Shader" path="res://water/water_shader.gdshader" id="water_shader"]
+[ext_resource type="Script" path="res://water/infinite_water.gd" id="6_infinite_water"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -21,12 +23,21 @@ glow_enabled = true
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_water"]
 size = Vector2(1000, 1000)
+subdivide_width = 200
+subdivide_depth = 200
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_water"]
-transparency = 1
-albedo_color = Color(0, 0.329412, 0.815686, 0.588235)
-metallic = 0.5
-roughness = 0.1
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_water"]
+shader = ExtResource("water_shader")
+shader_parameter/water_color = Color(0, 0.329412, 0.815686, 0.3)
+shader_parameter/metallic = 0.5
+shader_parameter/roughness = 0.1
+shader_parameter/time_scale = 1.0
+shader_parameter/wave_strength = 0.05
+shader_parameter/wave_speed = 2.0
+shader_parameter/wave_frequency = 0.2
+shader_parameter/depth_fade_near = 0.0
+shader_parameter/depth_fade_far = 20.0
+shader_parameter/deep_water_color = Color(0, 0.2, 0.6, 0.7)
 
 [sub_resource type="CapsuleShape3D" id="PlayerShape"]
 
@@ -48,9 +59,11 @@ transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75
 shadow_enabled = true
 
 [node name="WaterPlane" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 11, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 13, 0)
+extra_cull_margin = 50.0
 mesh = SubResource("PlaneMesh_water")
-surface_material_override/0 = SubResource("StandardMaterial3D_water")
+surface_material_override/0 = SubResource("ShaderMaterial_water")
+script = ExtResource("6_infinite_water")
 
 [node name="Player" type="CharacterBody3D" parent="." groups=["player"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)

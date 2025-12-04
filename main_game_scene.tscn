@@ -58,13 +58,6 @@ environment = SubResource("Env")
 transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
 shadow_enabled = true
 
-[node name="WaterPlane" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 13, 0)
-extra_cull_margin = 50.0
-mesh = SubResource("PlaneMesh_water")
-surface_material_override/0 = SubResource("ShaderMaterial_water")
-script = ExtResource("6_infinite_water")
-
 [node name="Player" type="CharacterBody3D" parent="." groups=["player"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 0)
 script = ExtResource("1_player")
@@ -120,6 +113,7 @@ text = "Mode: TERRAIN"
 [node name="TerrainManager" type="Node3D" parent="." node_paths=PackedStringArray("viewer")]
 script = ExtResource("4_terrain")
 viewer = NodePath("../Player")
+water_level = 13.0
 
 [node name="BuildingManager" type="Node3D" parent="."]
 script = ExtResource("5_buildings")

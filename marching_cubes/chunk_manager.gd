@@ -77,7 +77,7 @@ func _ready():
 	terrain_material.set_shader_parameter("global_snow_amount", 0.0)
 	
 	# Setup Water Shader Material
-	var water_shader = load("res://water/water_shader.gdshader")
+	var water_shader = load("res://marching_cubes_water/water_shader.gdshader")
 	water_material = ShaderMaterial.new()
 	water_material.shader = water_shader
 	

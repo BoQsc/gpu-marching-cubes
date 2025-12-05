@@ -83,9 +83,21 @@ func _ready():
 	compute_thread = Thread.new()
 	compute_thread.start(_thread_function)
 
+var _viewer_found: bool = false
+
 func _process(_delta):
-	if not viewer:
-		return
+	if not _viewer_found:
+		if not viewer:
+			viewer = get_tree().get_first_node_in_group("player")
+			if not viewer:
+				viewer = get_node_or_null("../CharacterBody3D")
+		
+		if viewer:
+			print("Viewer found: ", viewer.name)
+			_viewer_found = true
+		else:
+			return # Keep searching next frame
+
 	update_chunks()
 
 func modify_terrain(pos: Vector3, radius: float, value: float, material_id: int = 1):

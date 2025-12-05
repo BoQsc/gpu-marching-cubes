@@ -529,13 +529,15 @@ func create_chunk_node(mesh: ArrayMesh, position: Vector3) -> Node3D:
 	mesh_instance.mesh = mesh
 	root.add_child(mesh_instance)
 	
-	# Collision: Only generate for TERRAIN surfaces?
-	# For now, create trimesh from WHOLE mesh. 
-	# This means you can walk on water. 
-	# If you want water to be non-solid, we need to split meshes or filter surfaces.
-	# Let's assume solid water (ice-like) for placement, or we can refine later.
-	var collision_shape = CollisionShape3D.new()
-	collision_shape.shape = mesh.create_trimesh_shape()
-	root.add_child(collision_shape)
+	# Collision: Only generate for TERRAIN surfaces (Surface 0).
+	# Water (Surface 1) should be non-solid.
+	if mesh.get_surface_count() > 0:
+		var collision_mesh = ArrayMesh.new()
+		# Extract only the terrain surface for collision
+		collision_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(0))
+		
+		var collision_shape = CollisionShape3D.new()
+		collision_shape.shape = collision_mesh.create_trimesh_shape()
+		root.add_child(collision_shape)
 	
 	return root

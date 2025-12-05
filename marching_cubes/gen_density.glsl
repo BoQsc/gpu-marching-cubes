@@ -44,6 +44,13 @@ float get_terrain_density(vec3 world_pos) {
     return world_pos.y - terrain_height;
 }
 
+// Polynomial Smooth Max (for smooth intersection)
+// k = smoothing radius
+float smax(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
+    return mix(b, a, h) + k * h * (1.0 - h);
+}
+
 void main() {
     uvec3 id = gl_GlobalInvocationID.xyz;
     
@@ -57,9 +64,9 @@ void main() {
     vec3 world_pos = pos + params.chunk_offset.xyz;
     
     float d_terrain = get_terrain_density(world_pos);
-    float d_water = world_pos.y - params.water_level;
+    float d_water = world_pos.y - params.water_level; // Negative = Water, Positive = Air
     
-    float final_density = d_terrain;
+    float final_density = 0.0;
     float material = 0.0; // 0 = Air
     
     // Priority: Terrain overwrites Water
@@ -69,11 +76,15 @@ void main() {
         material = 1.0; // Terrain
     } else if (d_water < 0.0) {
         // Inside Water (and NOT inside terrain)
-        final_density = d_water;
+        // Use smax to create a smooth meniscus/shoreline for water blocks
+        // The second term (-d_terrain) represents the "Air Volume" (solid when above ground).
+        // Bias by -1.0 to ensure aggressive overlap and counteract smax erosion.
+        final_density = smax(d_water, -d_terrain - 1.0, 4.0) - 1.0;
         material = 2.0; // Water
     } else {
-        // Air
-        final_density = min(d_terrain, d_water); // Distance to closest surface
+        // Air - distance to closest solid surface (terrain or water)
+        // This makes air regions have a proper SDF to a surface.
+        final_density = min(d_terrain, d_water); 
         material = 0.0;
     }
     

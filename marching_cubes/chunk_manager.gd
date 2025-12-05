@@ -60,7 +60,7 @@ func _ready():
 
 	# Load shaders (Data only, safe on Main Thread)
 	shader_gen_spirv = load("res://marching_cubes/gen_density.glsl").get_spirv()
-	shader_gen_water_spirv = load("res://marching_cubes/gen_water_density.glsl").get_spirv() # Load new shader
+	shader_gen_water_spirv = load("res://marching_cubes_water/gen_water_density.glsl").get_spirv() # Load new shader
 	shader_mod_spirv = load("res://marching_cubes/modify_density.glsl").get_spirv()
 	shader_mesh_spirv = load("res://marching_cubes/marching_cubes.glsl").get_spirv()
 	

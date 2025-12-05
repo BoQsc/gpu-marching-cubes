@@ -65,9 +65,9 @@ vec3 get_normal_for_pass(vec3 pos, int pass_id) {
         float mat = data.y;
         
         if (pass_id == 1) { // Terrain Pass
-            if (mat > 1.5) val = 1.0; // Treat Water as Air
+            if (mat > 1.5) val = 0.0; // Treat Water as Surface (0.0) to extend mesh to it
         } else { // Water Pass
-            if (mat > 0.5 && mat < 1.5) val = 1.0; // Treat Terrain as Air
+            if (mat > 0.5 && mat < 1.5) val = 0.0; // Treat Terrain as Surface (0.0) to extend mesh to it
         }
         samples[i] = val;
     }
@@ -103,12 +103,12 @@ void generate_mesh_for_material(uvec3 id, int target_mat_id) {
         
         // MASKING LOGIC
         if (target_mat_id == 1) { // Terrain Pass
-            // Ignore Water (Treat as Air)
-            // Material 2.0 is Water. Material 1.0 is Terrain. Material 0.0 is Air.
-            if (m > 1.5) d = 1.0;
+            // Ignore Water (Treat as Surface 0.0)
+            // This causes the terrain to "reach out" and touch the water voxel center
+            if (m > 1.5) d = 0.0;
         } else { // Water Pass
-            // Ignore Terrain (Treat as Air)
-            if (m > 0.5 && m < 1.5) d = 1.0;
+            // Ignore Terrain (Treat as Surface 0.0)
+            if (m > 0.5 && m < 1.5) d = 0.0;
         }
         
         densities[i] = d;

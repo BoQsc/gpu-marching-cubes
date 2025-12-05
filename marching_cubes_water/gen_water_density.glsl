@@ -18,11 +18,12 @@ layout(push_constant) uniform PushConstants {
     float water_level; // Y-coordinate of the water surface
 } params;
 
-// Simple linear water density: (WaterLevel - y)
-// Positive below water, negative above.
+// Simple linear water density: (y - WaterLevel)
+// Negative below water (Solid), Positive above (Air).
+// This matches the standard marching cubes convention (Negative = Solid).
 float get_base_water_density(vec3 pos) {
     vec3 world_pos = pos + params.chunk_offset.xyz;
-    return params.water_level - world_pos.y;
+    return world_pos.y - params.water_level;
 }
 
 // Polynomial Smooth Max (for smooth intersection)
@@ -43,64 +44,30 @@ void main() {
     uint index = id.x + (id.y * 33) + (id.z * 33 * 33);
     
     // Calculate base water density
-    float water_dens = get_base_water_density(vec3(id));
+    // d_plane = y - level. (Negative/Solid below level).
+    float base_water = get_base_water_density(vec3(id));
     
     // Read existing terrain density
+    // terrain_dens = y - height. (Negative/Solid below ground).
     float terrain_dens = terrain_buffer.values[index];
     
-    // Boolean Subtraction: Water MINUS Terrain
-    // To carve terrain out of water, we use: min(water, -terrain)
-    // Wait, marching cubes usually assumes surface at 0. 
-    // Solid is positive? Or negative?
-    // In gen_density.glsl: return world_pos.y - terrain_height;
-    // If y > height (air), value > 0. If y < height (ground), value < 0.
-    // So NEGATIVE is SOLID (inside ground), POSITIVE is AIR.
+    // We want the region that is:
+    // 1. BELOW water level (base_water < 0)
+    // 2. ABOVE terrain surface (terrain_dens > 0)
     
-    // Let's check standard:
-    // Usually, inside=negative, outside=positive.
-    // terrain_dens < 0 means "inside rock".
+    // To treat "Above Terrain" as a "Solid" volume for intersection,
+    // we invert terrain_dens:
+    // air_dens = -terrain_dens. (Negative/Solid above ground).
     
-    // Water logic:
-    // We want "inside water" to be negative.
-    // world_pos.y < water_level  =>  water_level - world_pos.y > 0. 
-    // This would make UNDERWATER positive (Air-like).
-    // That's backwards if we want standard SDF convention (dist to surface).
-    // But let's look at 'marching_cubes.glsl'. It likely looks for 0 crossing.
-    // The sign determines inside/outside.
-    
-    // Let's Stick to the convention of 'gen_density.glsl':
-    // "world_pos.y - terrain_height"
-    // Above ground (+), Below ground (-).
-    
-    // So for water:
-    // "world_pos.y - water_level"
-    // Above water (+), Below water (-).
-    
-    float base_water = (vec3(id).y + params.chunk_offset.y) - params.water_level;
-    
-    // Now, we want water ONLY where there is NO terrain.
-    // Terrain exists where terrain_dens < 0.
-    // Water exists where base_water < 0.
-    
-    // We want the final density to be "inside water" (negative) ONLY if:
-    // 1. We are below water level (base_water < 0)
-    // 2. We are NOT inside terrain (terrain_dens > 0)
-    
-    // Boolean Intersection: max(A, B)
-    // Intersection of "Below Water" and "Above Terrain"
-    // final = max(base_water, -terrain_dens? No, terrain_dens is already 'dist to ground')
-    // If terrain_dens is negative (underground), we want to treat it as "Solid/Occupied".
-    // We want water to be 'air' (positive) inside the rock.
-    
-    // Fix Z-Fighting & Gaps: Add a positive bias to terrain_dens.
-    // This pushes the "Solid Ground" definition slightly inwards,
-    // effectively extending the "Air" (Water) space into the terrain.
-    float terrain_dens_biased = terrain_dens + 0.5;
+    // Bias: We subtract 0.5 to push the "Air" solid boundary slightly 
+    // into the real ground. This ensures the water meshes overlap the 
+    // terrain meshes, preventing gaps.
+    float air_dens_biased = -terrain_dens - 0.5;
 
-    // Smooth Intersection: smax(A, B)
-    // We blend the Water Plane (base_water) with the Terrain Hole (-terrain_dens_biased).
-    // k = 3.0 provides a very smooth, wide fillet at the intersection.
-    float final_density = smax(base_water, -terrain_dens_biased, 3.0);
+    // Intersection: smax(WaterPlane, AirVolume)
+    // The region that is BOTH "Below Water" AND "In the Air" (i.e. filling the lake).
+    // k = 4.0 creates a wide meniscus/fillet where water meets land.
+    float final_density = smax(base_water, air_dens_biased, 4.0);
     
     water_buffer.values[index] = final_density;
 }

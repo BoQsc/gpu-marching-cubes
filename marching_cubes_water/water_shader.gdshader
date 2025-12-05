@@ -28,9 +28,6 @@ uniform sampler2D SCREEN_TEXTURE : hint_screen_texture, filter_linear_mipmap;
 varying vec3 uv1_triplanar_pos;
 
 void vertex() {
-	// Force flat normals for water to avoid "jelly" artifacts at terrain intersection
-	NORMAL = vec3(0.0, 1.0, 0.0);
-	
 	// Triplanar setup (using simplified top-down for now)
 	uv1_triplanar_pos = VERTEX * 0.2; // Scale UVs
 }

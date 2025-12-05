@@ -2,7 +2,7 @@ extends Resource
 
 class_name WaterGeneratorConfig
 
-@export var water_level: float = 13.0
+@export var water_level: float = 16.0
 @export var noise_frequency: float = 0.05
 @export var albedo: Color = Color(0.0, 0.4, 0.6, 1.0)
 @export var albedo_fresh: Color = Color(0.0, 0.6, 0.8, 1.0)

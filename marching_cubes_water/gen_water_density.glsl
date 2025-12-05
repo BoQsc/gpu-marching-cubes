@@ -59,15 +59,18 @@ void main() {
     // we invert terrain_dens:
     // air_dens = -terrain_dens. (Negative/Solid above ground).
     
-    // Bias: We subtract 0.5 to push the "Air" solid boundary slightly 
-    // into the real ground. This ensures the water meshes overlap the 
-    // terrain meshes, preventing gaps.
-    float air_dens_biased = -terrain_dens - 0.5;
+    // Bias: We subtract 1.0 to aggressively push the "Air" solid boundary 
+    // into the real ground. This creates a generous overlap, ensuring the 
+    // water meshes firmly intersect the terrain without gaps.
+    float air_dens_biased = -terrain_dens - 1.0;
 
     // Intersection: smax(WaterPlane, AirVolume)
-    // The region that is BOTH "Below Water" AND "In the Air" (i.e. filling the lake).
-    // k = 4.0 creates a wide meniscus/fillet where water meets land.
-    float final_density = smax(base_water, air_dens_biased, 4.0);
+    // The region that is BOTH "Below Water" AND "In the Air".
+    // k = 4.0 creates a wide meniscus.
+    // SUBTRACTING 1.0 (k/4) counteracts the "erosion" caused by smax,
+    // ensuring the water level doesn't dip below the intended surface at the edge.
+    // This forces the water to "climb" the terrain rather than shying away.
+    float final_density = smax(base_water, air_dens_biased, 4.0) - 1.0;
     
     water_buffer.values[index] = final_density;
 }

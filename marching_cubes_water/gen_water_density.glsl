@@ -25,6 +25,13 @@ float get_base_water_density(vec3 pos) {
     return params.water_level - world_pos.y;
 }
 
+// Polynomial Smooth Max (for smooth intersection)
+// k = smoothing radius
+float smax(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
+    return mix(b, a, h) + k * h * (1.0 - h);
+}
+
 void main() {
     uvec3 id = gl_GlobalInvocationID.xyz;
     
@@ -85,15 +92,15 @@ void main() {
     // If terrain_dens is negative (underground), we want to treat it as "Solid/Occupied".
     // We want water to be 'air' (positive) inside the rock.
     
-    // Fix Z-Fighting: Subtract a small epsilon from terrain_dens.
-    // terrain_dens < 0 is Ground. Subtracting makes it MORE negative (deeper ground).
-    // This effectively expands the "Ground" region slightly into the "Water" region.
-    // Since water is clipped by max(water, -terrain), expanding the negative terrain
-    // (making -terrain positive sooner) cuts the water off before it hits the visual mesh.
-    float terrain_dens_biased = terrain_dens - 0.05;
+    // Fix Z-Fighting & Gaps: Add a positive bias to terrain_dens.
+    // This pushes the "Solid Ground" definition slightly inwards,
+    // effectively extending the "Air" (Water) space into the terrain.
+    float terrain_dens_biased = terrain_dens + 0.5;
 
-    // final = max(base_water, -terrain_dens_biased)
-    float final_density = max(base_water, -terrain_dens_biased);
+    // Smooth Intersection: smax(A, B)
+    // We blend the Water Plane (base_water) with the Terrain Hole (-terrain_dens_biased).
+    // k = 3.0 provides a very smooth, wide fillet at the intersection.
+    float final_density = smax(base_water, -terrain_dens_biased, 3.0);
     
     water_buffer.values[index] = final_density;
 }

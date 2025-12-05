@@ -25,14 +25,13 @@ uniform sampler2D DEPTH_TEXTURE : hint_depth_texture, filter_linear_mipmap;
 uniform sampler2D SCREEN_TEXTURE : hint_screen_texture, filter_linear_mipmap;
 
 // Triplanar blending for Marching Cubes meshes
-varying vec3 uv1_power_normal;
 varying vec3 uv1_triplanar_pos;
 
 void vertex() {
-	// Triplanar setup
-	vec3 normal = NORMAL;
-	uv1_power_normal = pow(abs(normal), vec3(5.0)); // Sharper blending
-	uv1_power_normal /= dot(uv1_power_normal, vec3(1.0));
+	// Force flat normals for water to avoid "jelly" artifacts at terrain intersection
+	NORMAL = vec3(0.0, 1.0, 0.0);
+	
+	// Triplanar setup (using simplified top-down for now)
 	uv1_triplanar_pos = VERTEX * 0.2; // Scale UVs
 }
 

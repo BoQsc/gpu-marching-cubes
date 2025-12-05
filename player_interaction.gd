@@ -13,6 +13,9 @@ var current_mode: Mode = Mode.TERRAIN
 var current_block_id: int = 1
 var current_rotation: int = 0
 
+# Terrain Material: 1 = Rock, 2 = Water
+var current_terrain_material: int = 1
+
 var current_voxel_pos: Vector3
 var current_remove_voxel_pos: Vector3
 var has_target: bool = false
@@ -31,18 +34,14 @@ func _unhandled_input(event):
 		toggle_mode()
 	
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_1:
-			current_block_id = 1
-			update_ui()
-		elif event.keycode == KEY_2:
-			current_block_id = 2
-			update_ui()
-		elif event.keycode == KEY_3:
-			current_block_id = 3
-			update_ui()
-		elif event.keycode == KEY_4:
-			current_block_id = 4
-			update_ui()
+		if current_mode == Mode.BUILDING:
+			if event.keycode == KEY_1: current_block_id = 1; update_ui()
+			elif event.keycode == KEY_2: current_block_id = 2; update_ui()
+			elif event.keycode == KEY_3: current_block_id = 3; update_ui()
+			elif event.keycode == KEY_4: current_block_id = 4; update_ui()
+		elif current_mode == Mode.TERRAIN:
+			if event.keycode == KEY_1: current_terrain_material = 1; update_ui()
+			elif event.keycode == KEY_2: current_terrain_material = 2; update_ui()
 	
 	if event is InputEventMouseButton:
 		if event.pressed:
@@ -68,7 +67,10 @@ func toggle_mode():
 
 func update_ui():
 	if current_mode == Mode.TERRAIN:
-		mode_label.text = "Mode: TERRAIN (Smooth)\nL-Click: Dig, R-Click: Place"
+		var mat_name = "Rock"
+		if current_terrain_material == 2: mat_name = "Water"
+		
+		mode_label.text = "Mode: TERRAIN (Smooth)\nMaterial: %s (Press 1/2)\nL-Click: Dig, R-Click: Place" % mat_name
 	else:
 		var block_name = "Cube"
 		if current_block_id == 2: block_name = "Ramp"
@@ -130,9 +132,11 @@ func handle_terrain_input(event):
 	var hit = raycast(100.0)
 	if hit:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			terrain_manager.modify_terrain(hit.position, 4.0, 1.0) # Dig
+			# Digging: Value > 0. Material doesn't matter much but pass current.
+			terrain_manager.modify_terrain(hit.position, 4.0, 1.0, current_terrain_material) 
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			terrain_manager.modify_terrain(hit.position, 4.0, -1.0) # Place
+			# Placing: Value < 0. Pass selected material.
+			terrain_manager.modify_terrain(hit.position, 4.0, -1.0, current_terrain_material)
 
 func handle_building_input(event):
 	# current_voxel_pos is the GHOST block (Placement Target)

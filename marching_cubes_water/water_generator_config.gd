@@ -11,13 +11,7 @@ class_name WaterGeneratorConfig
 @export var beer_factor: float = 0.15
 @export var foam_color: Color = Color(1.0, 1.0, 1.0, 1.0)
 
-var _gen_water_density_spirv: RDShaderSPIRV
 var _water_material: ShaderMaterial
-
-func get_water_shader_spirv() -> RDShaderSPIRV:
-	if _gen_water_density_spirv == null:
-		_gen_water_density_spirv = load("res://marching_cubes_water/gen_water_density.glsl").get_spirv()
-	return _gen_water_density_spirv
 
 func create_water_material() -> Material:
 	if _water_material == null:

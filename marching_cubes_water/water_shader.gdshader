@@ -12,8 +12,6 @@ uniform float noise_scale = 10.0;
 uniform float height_scale = 0.15;
 
 uniform sampler2D wave; // Noise texture for waves
-uniform sampler2D texture_normal; // Normal map
-uniform sampler2D texture_normal2; // Second normal map
 
 // Depth Fade & Beer's Law
 uniform float beer_factor = 0.2;
@@ -32,14 +30,6 @@ void vertex() {
 	uv1_triplanar_pos = VERTEX * 0.2; // Scale UVs
 }
 
-vec4 triplanar_texture(sampler2D p_sampler, vec3 p_weights, vec3 p_triplanar_pos) {
-	vec4 samp = vec4(0.0);
-	samp += texture(p_sampler, p_triplanar_pos.xy) * p_weights.z;
-	samp += texture(p_sampler, p_triplanar_pos.xz) * p_weights.y;
-	samp += texture(p_sampler, p_triplanar_pos.zy * vec2(-1.0, 1.0)) * p_weights.x;
-	return samp;
-}
-
 void fragment() {
 	// Depth Calculation
 	float depth_tex = texture(DEPTH_TEXTURE, SCREEN_UV).r;
@@ -51,8 +41,6 @@ void fragment() {
 	
 	// Current fragment depth (approximate)
 	float fragment_depth = VERTEX.z; // View space Z is negative, usually we want distance
-	// Godot 4 View Space: Z is negative forward.
-	// We want positive distance.
 	float depth_surface = -VERTEX.z;
 	
 	float depth_diff = linear_scene_depth - depth_surface;
@@ -65,16 +53,8 @@ void fragment() {
 	// If depth_diff is small, we are near shore.
 	float foam_mix = clamp((1.0 - (depth_diff / foam_distance)), 0.0, 1.0);
 	
-	// Normal Mapping (Triplanar or scrolling)
-	// For simplicity on MC mesh, let's just use world UVs (xz) for top-down water look, 
-	// but triplanar is better for steep angles.
-	
 	vec2 time = (TIME * wave_direction) * time_scale * vec2(1.0, 1.0);
 	vec2 uv = uv1_triplanar_pos.xz; // Top-down
-	
-	// Simple scrolling normals (placeholder noise if no texture)
-	// Assuming we might not have specific textures, we'll use simple logic or placeholders.
-	// But let's try to read the noise.
 	
 	ALBEDO = mix(albedo.rgb, albedo_fresh.rgb, foam_mix);
 	ALBEDO = mix(ALBEDO, foam_color.rgb, step(0.0, foam_mix * 2.0 - 1.0) * 0.5); // Simple foam band
@@ -84,6 +64,5 @@ void fragment() {
 	SPECULAR = 0.5;
 	
 	// Refraction (Optional - needs offset)
-	// ALPHA = clamp(alpha + 0.1, 0.0, 1.0); // Ensure some visibility
 	ALPHA = clamp(alpha * 1.2, 0.05, 0.9); // Tweaked for visibility and transparency
 }

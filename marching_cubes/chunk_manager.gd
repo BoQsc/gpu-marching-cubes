@@ -1,5 +1,7 @@
 extends Node3D
 
+const WaterGeneratorConfig = preload("res://marching_cubes_water/water_generator_config.gd")
+
 # 32 Voxels wide
 const CHUNK_SIZE = 32
 # Overlap chunks by 1 unit to prevent gaps (seams)
@@ -13,13 +15,16 @@ const MAX_TRIANGLES = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 5
 @export var render_distance: int = 5
 @export var terrain_height: float = 10.0
 @export var noise_frequency: float = 0.1
-@export var water_level: float = 13.0
+@export var water_config: WaterGeneratorConfig
+
+var _shader_gen_water_spirv: RDShaderSPIRV
+var _water_material: Material
 
 # Threading
 var compute_thread: Thread
 var mutex: Mutex
 var semaphore: Semaphore
-var exit_thread: bool = false
+var exit_thread: bool = false # For _exit_tree()
 
 # Task Queue
 var task_queue: Array[Dictionary] = []
@@ -30,12 +35,10 @@ var pending_batches: Dictionary = {}
 
 # Shaders (SPIR-V Data)
 var shader_gen_spirv: RDShaderSPIRV
-var shader_gen_water_spirv: RDShaderSPIRV # New
 var shader_mod_spirv: RDShaderSPIRV
 var shader_mesh_spirv: RDShaderSPIRV
 
 var terrain_material: Material
-var water_material: Material # New
 
 class ChunkData:
 	var node: Node3D # Terrain Node
@@ -60,7 +63,7 @@ func _ready():
 
 	# Load shaders (Data only, safe on Main Thread)
 	shader_gen_spirv = load("res://marching_cubes/gen_density.glsl").get_spirv()
-	shader_gen_water_spirv = load("res://marching_cubes_water/gen_water_density.glsl").get_spirv() # Load new shader
+	_shader_gen_water_spirv = water_config.get_water_shader_spirv()
 	shader_mod_spirv = load("res://marching_cubes/modify_density.glsl").get_spirv()
 	shader_mesh_spirv = load("res://marching_cubes/marching_cubes.glsl").get_spirv()
 	
@@ -77,33 +80,7 @@ func _ready():
 	terrain_material.set_shader_parameter("global_snow_amount", 0.0)
 	
 	# Setup Water Shader Material
-	var water_shader = load("res://marching_cubes_water/water_shader.gdshader")
-	water_material = ShaderMaterial.new()
-	water_material.shader = water_shader
-	
-	# Create a noise texture for water waves
-	var noise = FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	noise.frequency = 0.05
-	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	
-	var noise_tex = NoiseTexture2D.new()
-	noise_tex.noise = noise
-	noise_tex.seamless = true
-	noise_tex.width = 256
-	noise_tex.height = 256
-	# Await texture generation if possible, but in _ready we can't await easily without blocking.
-	# NoiseTexture2D generates on a thread by default.
-	
-	water_material.set_shader_parameter("albedo", Color(0.0, 0.4, 0.6, 1.0))
-	water_material.set_shader_parameter("albedo_fresh", Color(0.0, 0.6, 0.8, 1.0))
-	water_material.set_shader_parameter("metallic", 0.1)
-	water_material.set_shader_parameter("roughness", 0.05)
-	water_material.set_shader_parameter("wave", noise_tex)
-	water_material.set_shader_parameter("beer_factor", 0.15)
-	water_material.set_shader_parameter("foam_color", Color(1.0, 1.0, 1.0, 1.0))
-	# Important: Marching Cubes mesh is usually double-sided or enclosed. 
-	# Culling might need adjustment in shader, but default is usually Back.
+	_water_material = water_config.create_water_material()
 	
 	compute_thread = Thread.new()
 	compute_thread.start(_thread_function)
@@ -240,7 +217,7 @@ func _thread_function():
 		return
 
 	var sid_gen = rd.shader_create_from_spirv(shader_gen_spirv)
-	var sid_gen_water = rd.shader_create_from_spirv(shader_gen_water_spirv) # Create Water Gen Shader
+	var sid_gen_water = rd.shader_create_from_spirv(_shader_gen_water_spirv) # Create Water Gen Shader
 	var sid_mod = rd.shader_create_from_spirv(shader_mod_spirv)
 	var sid_mesh = rd.shader_create_from_spirv(shader_mesh_spirv)
 	
@@ -341,7 +318,7 @@ func process_generate(rd: RenderingDevice, task, sid_gen, sid_gen_water, sid_mes
 	
 	var water_push = PackedFloat32Array([
 		chunk_pos.x, chunk_pos.y, chunk_pos.z, 0.0,
-		water_level, 0.0, 0.0, 0.0
+		water_config.water_level, 0.0, 0.0, 0.0
 	])
 	rd.compute_list_set_push_constant(list, water_push.to_byte_array(), water_push.size() * 4)
 	
@@ -356,7 +333,7 @@ func process_generate(rd: RenderingDevice, task, sid_gen, sid_gen_water, sid_mes
 	var mesh_terrain = run_meshing(rd, sid_mesh, pipe_mesh, density_buffer, chunk_pos, terrain_material, vertex_buffer, counter_buffer)
 	
 	# 4. Mesh Water
-	var mesh_water = run_meshing(rd, sid_mesh, pipe_mesh, water_density_buffer, chunk_pos, water_material, vertex_buffer, counter_buffer)
+	var mesh_water = run_meshing(rd, sid_mesh, pipe_mesh, water_density_buffer, chunk_pos, _water_material, vertex_buffer, counter_buffer)
 	
 	# Cleanup Water Buffer (we don't store it, we regen it on modify)
 	rd.free_rid(water_density_buffer)
@@ -407,7 +384,7 @@ func process_modify(rd: RenderingDevice, task, sid_mod, sid_gen_water, sid_mesh,
 	
 	var water_push = PackedFloat32Array([
 		chunk_pos.x, chunk_pos.y, chunk_pos.z, 0.0,
-		water_level, 0.0, 0.0, 0.0
+		water_config.water_level, 0.0, 0.0, 0.0
 	])
 	rd.compute_list_set_push_constant(list, water_push.to_byte_array(), water_push.size() * 4)
 	rd.compute_list_dispatch(list, 9, 9, 9)
@@ -418,7 +395,7 @@ func process_modify(rd: RenderingDevice, task, sid_mod, sid_gen_water, sid_mesh,
 	
 	# 3. Mesh Both
 	var mesh_terrain = run_meshing(rd, sid_mesh, pipe_mesh, density_buffer, chunk_pos, terrain_material, vertex_buffer, counter_buffer)
-	var mesh_water = run_meshing(rd, sid_mesh, pipe_mesh, water_density_buffer, chunk_pos, water_material, vertex_buffer, counter_buffer)
+	var mesh_water = run_meshing(rd, sid_mesh, pipe_mesh, water_density_buffer, chunk_pos, _water_material, vertex_buffer, counter_buffer)
 	
 	rd.free_rid(water_density_buffer)
 	

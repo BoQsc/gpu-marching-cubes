@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="WaterGeneratorConfig" load_steps=2 format=3 uid="uid://cekq8qdcrwn8h"]
+
+[ext_resource type="Script" uid="uid://bqnxo0gok22ck" path="res://marching_cubes_water/water_generator_config.gd" id="1_17dl3"]
+
+[resource]
+script = ExtResource("1_17dl3")

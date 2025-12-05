@@ -1,10 +1,11 @@
-[gd_scene load_steps=12 format=3 uid="uid://cubacbxdo4pih"]
+[gd_scene load_steps=13 format=3 uid="uid://cubacbxdo4pih"]
 
 [ext_resource type="Script" uid="uid://boyv8u5gclqum" path="res://character_body_3d.gd" id="1_player"]
 [ext_resource type="Script" uid="uid://cb5ijpk37p6ah" path="res://camera_3d.gd" id="2_camera"]
 [ext_resource type="Script" uid="uid://cje44f7r08sot" path="res://player_interaction.gd" id="3_interact"]
 [ext_resource type="Script" uid="uid://c1xwl5r0i1xs2" path="res://marching_cubes/chunk_manager.gd" id="4_terrain"]
 [ext_resource type="Script" uid="uid://bvdox6682bbj2" path="res://building_system/building_manager.gd" id="5_buildings"]
+[ext_resource type="Resource" uid="uid://cekq8qdcrwn8h" path="res://marching_cubes_water/default_water_config.tres" id="5_fof2l"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -93,6 +94,7 @@ text = "Mode: TERRAIN"
 [node name="TerrainManager" type="Node3D" parent="." node_paths=PackedStringArray("viewer")]
 script = ExtResource("4_terrain")
 viewer = NodePath("../Player")
+water_config = ExtResource("5_fof2l")
 
 [node name="BuildingManager" type="Node3D" parent="."]
 script = ExtResource("5_buildings")

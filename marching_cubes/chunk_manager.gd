@@ -17,7 +17,6 @@ const MAX_TRIANGLES = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 5
 @export var noise_frequency: float = 0.1
 @export var water_config: WaterGeneratorConfig
 
-var _shader_gen_water_spirv: RDShaderSPIRV
 var _water_material: Material
 
 # Threading
@@ -39,6 +38,7 @@ var shader_mod_spirv: RDShaderSPIRV
 var shader_mesh_spirv: RDShaderSPIRV
 
 var terrain_material: Material
+var water_compute: WaterCompute
 
 class ChunkData:
 	var node: Node3D # Terrain Node
@@ -63,7 +63,7 @@ func _ready():
 
 	# Load shaders (Data only, safe on Main Thread)
 	shader_gen_spirv = load("res://marching_cubes/gen_density.glsl").get_spirv()
-	_shader_gen_water_spirv = water_config.get_water_shader_spirv()
+	# Water shader handled by WaterCompute
 	shader_mod_spirv = load("res://marching_cubes/modify_density.glsl").get_spirv()
 	shader_mesh_spirv = load("res://marching_cubes/marching_cubes.glsl").get_spirv()
 	
@@ -217,14 +217,17 @@ func _thread_function():
 		return
 
 	var sid_gen = rd.shader_create_from_spirv(shader_gen_spirv)
-	var sid_gen_water = rd.shader_create_from_spirv(_shader_gen_water_spirv) # Create Water Gen Shader
+	# Water shader handled by WaterCompute
 	var sid_mod = rd.shader_create_from_spirv(shader_mod_spirv)
 	var sid_mesh = rd.shader_create_from_spirv(shader_mesh_spirv)
 	
 	var pipe_gen = rd.compute_pipeline_create(sid_gen)
-	var pipe_gen_water = rd.compute_pipeline_create(sid_gen_water) # Create Water Gen Pipeline
+	# Water pipeline handled by WaterCompute
 	var pipe_mod = rd.compute_pipeline_create(sid_mod)
 	var pipe_mesh = rd.compute_pipeline_create(sid_mesh)
+	
+	water_compute = WaterCompute.new(water_config)
+	water_compute.initialize(rd)
 	
 	# Create REUSABLE Buffers
 	var output_bytes_size = MAX_TRIANGLES * 3 * 6 * 4
@@ -251,9 +254,9 @@ func _thread_function():
 		mutex.unlock()
 		
 		if task.type == "generate":
-			process_generate(rd, task, sid_gen, sid_gen_water, sid_mesh, pipe_gen, pipe_gen_water, pipe_mesh, vertex_buffer, counter_buffer)
+			process_generate(rd, task, sid_gen, sid_mesh, pipe_gen, pipe_mesh, vertex_buffer, counter_buffer)
 		elif task.type == "modify":
-			process_modify(rd, task, sid_mod, sid_gen_water, sid_mesh, pipe_mod, pipe_gen_water, pipe_mesh, vertex_buffer, counter_buffer)
+			process_modify(rd, task, sid_mod, sid_mesh, pipe_mod, pipe_mesh, vertex_buffer, counter_buffer)
 		elif task.type == "free":
 			if task.rid.is_valid():
 				rd.free_rid(task.rid)
@@ -262,17 +265,19 @@ func _thread_function():
 	rd.free_rid(vertex_buffer)
 	rd.free_rid(counter_buffer)
 	rd.free_rid(pipe_gen)
-	rd.free_rid(pipe_gen_water)
+	# pipe_gen_water cleaned by WaterCompute
 	rd.free_rid(pipe_mod)
 	rd.free_rid(pipe_mesh)
 	rd.free_rid(sid_gen)
-	rd.free_rid(sid_gen_water)
+	# sid_gen_water cleaned by WaterCompute
 	rd.free_rid(sid_mod)
 	rd.free_rid(sid_mesh)
 	
+	water_compute.cleanup(rd)
+	
 	rd.free()
 
-func process_generate(rd: RenderingDevice, task, sid_gen, sid_gen_water, sid_mesh, pipe_gen, pipe_gen_water, pipe_mesh, vertex_buffer, counter_buffer):
+func process_generate(rd: RenderingDevice, task, sid_gen, sid_mesh, pipe_gen, pipe_mesh, vertex_buffer, counter_buffer):
 	var chunk_pos = task.pos
 	
 	# 1. Generate Terrain Density
@@ -303,31 +308,7 @@ func process_generate(rd: RenderingDevice, task, sid_gen, sid_gen_water, sid_mes
 	if set_gen.is_valid(): rd.free_rid(set_gen)
 	
 	# 2. Generate Water Density (using Terrain Density as input)
-	var water_density_buffer = rd.storage_buffer_create(density_bytes)
-	var u_water_out = RDUniform.new()
-	u_water_out.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	u_water_out.binding = 1
-	u_water_out.add_id(water_density_buffer)
-	
-	# u_density (Binding 0) is already Terrain Buffer (Read-Only in shader)
-	var set_water = rd.uniform_set_create([u_density, u_water_out], sid_gen_water, 0)
-	
-	list = rd.compute_list_begin()
-	rd.compute_list_bind_compute_pipeline(list, pipe_gen_water)
-	rd.compute_list_bind_uniform_set(list, set_water, 0)
-	
-	var water_push = PackedFloat32Array([
-		chunk_pos.x, chunk_pos.y, chunk_pos.z, 0.0,
-		water_config.water_level, 0.0, 0.0, 0.0
-	])
-	rd.compute_list_set_push_constant(list, water_push.to_byte_array(), water_push.size() * 4)
-	
-	rd.compute_list_dispatch(list, 9, 9, 9)
-	rd.compute_list_end()
-	rd.submit()
-	rd.sync()
-	
-	if set_water.is_valid(): rd.free_rid(set_water)
+	var water_density_buffer = water_compute.generate_density(rd, density_buffer, chunk_pos)
 
 	# 3. Mesh Terrain
 	var mesh_terrain = run_meshing(rd, sid_mesh, pipe_mesh, density_buffer, chunk_pos, terrain_material, vertex_buffer, counter_buffer)
@@ -340,7 +321,7 @@ func process_generate(rd: RenderingDevice, task, sid_gen, sid_gen_water, sid_mes
 	
 	call_deferred("complete_generation", task.coord, mesh_terrain, mesh_water, density_buffer)
 
-func process_modify(rd: RenderingDevice, task, sid_mod, sid_gen_water, sid_mesh, pipe_mod, pipe_gen_water, pipe_mesh, vertex_buffer, counter_buffer):
+func process_modify(rd: RenderingDevice, task, sid_mod, sid_mesh, pipe_mod, pipe_mesh, vertex_buffer, counter_buffer):
 	var density_buffer = task.rid
 	var chunk_pos = task.pos
 	
@@ -369,29 +350,7 @@ func process_modify(rd: RenderingDevice, task, sid_mod, sid_gen_water, sid_mesh,
 	if set_mod.is_valid(): rd.free_rid(set_mod)
 	
 	# 2. Regenerate Water Density (It depends on Terrain Density)
-	var density_bytes = DENSITY_GRID_SIZE * DENSITY_GRID_SIZE * DENSITY_GRID_SIZE * 4
-	var water_density_buffer = rd.storage_buffer_create(density_bytes)
-	
-	var u_water_out = RDUniform.new()
-	u_water_out.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	u_water_out.binding = 1
-	u_water_out.add_id(water_density_buffer)
-	
-	var set_water = rd.uniform_set_create([u_density, u_water_out], sid_gen_water, 0)
-	list = rd.compute_list_begin()
-	rd.compute_list_bind_compute_pipeline(list, pipe_gen_water)
-	rd.compute_list_bind_uniform_set(list, set_water, 0)
-	
-	var water_push = PackedFloat32Array([
-		chunk_pos.x, chunk_pos.y, chunk_pos.z, 0.0,
-		water_config.water_level, 0.0, 0.0, 0.0
-	])
-	rd.compute_list_set_push_constant(list, water_push.to_byte_array(), water_push.size() * 4)
-	rd.compute_list_dispatch(list, 9, 9, 9)
-	rd.compute_list_end()
-	rd.submit()
-	rd.sync()
-	if set_water.is_valid(): rd.free_rid(set_water)
+	var water_density_buffer = water_compute.generate_density(rd, density_buffer, chunk_pos)
 	
 	# 3. Mesh Both
 	var mesh_terrain = run_meshing(rd, sid_mesh, pipe_mesh, density_buffer, chunk_pos, terrain_material, vertex_buffer, counter_buffer)

@@ -1,12 +1,10 @@
-[gd_scene load_steps=14 format=3 uid="uid://cubacbxdo4pih"]
+[gd_scene load_steps=12 format=3 uid="uid://cubacbxdo4pih"]
 
 [ext_resource type="Script" uid="uid://boyv8u5gclqum" path="res://character_body_3d.gd" id="1_player"]
 [ext_resource type="Script" uid="uid://cb5ijpk37p6ah" path="res://camera_3d.gd" id="2_camera"]
 [ext_resource type="Script" uid="uid://cje44f7r08sot" path="res://player_interaction.gd" id="3_interact"]
 [ext_resource type="Script" uid="uid://c1xwl5r0i1xs2" path="res://marching_cubes/chunk_manager.gd" id="4_terrain"]
 [ext_resource type="Script" uid="uid://bvdox6682bbj2" path="res://building_system/building_manager.gd" id="5_buildings"]
-[ext_resource type="Shader" path="res://water/water_shader.gdshader" id="water_shader"]
-[ext_resource type="Script" path="res://water/infinite_water.gd" id="6_infinite_water"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -20,24 +18,6 @@ background_mode = 2
 sky = SubResource("Sky")
 tonemap_mode = 2
 glow_enabled = true
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_water"]
-size = Vector2(1000, 1000)
-subdivide_width = 200
-subdivide_depth = 200
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_water"]
-shader = ExtResource("water_shader")
-shader_parameter/water_color = Color(0, 0.329412, 0.815686, 0.3)
-shader_parameter/metallic = 0.5
-shader_parameter/roughness = 0.1
-shader_parameter/time_scale = 1.0
-shader_parameter/wave_strength = 0.05
-shader_parameter/wave_speed = 2.0
-shader_parameter/wave_frequency = 0.2
-shader_parameter/depth_fade_near = 0.0
-shader_parameter/depth_fade_far = 20.0
-shader_parameter/deep_water_color = Color(0, 0.2, 0.6, 0.7)
 
 [sub_resource type="CapsuleShape3D" id="PlayerShape"]
 
@@ -113,7 +93,6 @@ text = "Mode: TERRAIN"
 [node name="TerrainManager" type="Node3D" parent="." node_paths=PackedStringArray("viewer")]
 script = ExtResource("4_terrain")
 viewer = NodePath("../Player")
-water_level = 13.0
 
 [node name="BuildingManager" type="Node3D" parent="."]
 script = ExtResource("5_buildings")

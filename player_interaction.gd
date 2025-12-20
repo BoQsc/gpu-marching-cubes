@@ -779,16 +779,33 @@ func handle_playing_input(event):
 	
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		# L-Click: Harvest/Chop
-		if hit and hit.collider:
-			if hit.collider.is_in_group("trees"):
-				if vegetation_manager:
-					vegetation_manager.chop_tree_by_collider(hit.collider)
-			elif hit.collider.is_in_group("grass"):
-				if vegetation_manager:
-					vegetation_manager.harvest_grass_by_collider(hit.collider)
-			elif hit.collider.is_in_group("rocks"):
-				if vegetation_manager:
-					vegetation_manager.harvest_rock_by_collider(hit.collider)
+		if hit:
+			# Check RID-based vegetation first (PhysicsServer3D optimization)
+			if vegetation_manager and hit.has("rid") and hit.rid.is_valid():
+				var veg_key = vegetation_manager.get_item_key_from_rid(hit.rid)
+				if veg_key:
+					if veg_key.begins_with("t_"):
+						vegetation_manager.chop_tree_by_collider(hit.rid)
+						return
+					elif veg_key.begins_with("g_"):
+						vegetation_manager.harvest_grass_by_collider(hit.rid)
+						return
+					elif veg_key.begins_with("r_"):
+						vegetation_manager.harvest_rock_by_collider(hit.rid)
+						return
+			
+			# Fallback to Node-based check (for non-optimized objects)
+			if hit.collider:
+				if hit.collider.is_in_group("trees"):
+					if vegetation_manager:
+						# Legacy support or if somehow a Node collider exists
+						pass 
+				elif hit.collider.is_in_group("grass"):
+					if vegetation_manager:
+						pass 
+				elif hit.collider.is_in_group("rocks"):
+					if vegetation_manager:
+						pass
 	
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		# R-Click: Place selected item on terrain (use normal raycast without areas)

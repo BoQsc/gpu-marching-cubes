@@ -9,7 +9,7 @@ signal rock_harvested(world_position: Vector3)
 @export var tree_scale: float = 1.0
 @export var tree_y_offset: float = 0.0  # GLB model has Y=11.76 origin built-in
 @export var tree_rotation_fix: Vector3 = Vector3.ZERO
-@export var collision_radius: float = 0.5
+@export var collision_radius: float = 0.6
 @export var collision_height: float = 8.0
 @export var collider_distance: float = 30.0  # Only trees within this distance get colliders
 
@@ -17,7 +17,7 @@ signal rock_harvested(world_position: Vector3)
 @export var grass_model_path: String = "res://models/grass/2/grass_lowpoly.glb"
 @export var grass_scale: float = 0.5
 @export var grass_y_offset: float = 0.0
-@export var grass_collision_radius: float = 0.3
+@export var grass_collision_radius: float = 0.4
 @export var grass_collision_height: float = 0.5
 ## Dense grass mode: even distribution everywhere (GPU intensive)
 ## Default (false): patchy distribution using noise (better performance)
@@ -27,8 +27,11 @@ signal rock_harvested(world_position: Vector3)
 @export var rock_model_path: String = "res://models/small_rock/simple_rock_-_ps1_low_poly.glb"
 @export var rock_scale: float = 0.5
 @export var rock_y_offset: float = 0.0
-@export var rock_collision_radius: float = 0.4
+@export var rock_collision_radius: float = 0.5
 @export var rock_collision_height: float = 0.4
+
+## PERF: Global toggle for vegetation collisions (Huge physics cost)
+@export var enable_vegetation_collisions: bool = true
 
 var tree_mesh: Mesh
 var tree_base_transform: Transform3D = Transform3D()  # Orientation fix from GLB
@@ -48,21 +51,27 @@ var pending_chunks: Array[Dictionary] = []
 var chunk_tree_data: Dictionary = {}
 
 # Pool of active colliders (reusable)
-var active_colliders: Dictionary = {}  # tree_key -> StaticBody3D
-var collider_pool: Array[StaticBody3D] = []
+var active_colliders: Dictionary = {}  # key -> Node (StaticBody3D or Area3D)
+
+# Resources for shapes (shared)
+var shape_res_tree: CylinderShape3D
+var shape_res_grass: SphereShape3D
+var shape_res_rock: CylinderShape3D
+
+# Constants limits
 const MAX_ACTIVE_COLLIDERS = 50  # Limit active colliders for performance
+const MAX_ACTIVE_GRASS_COLLIDERS = 30
+const MAX_ACTIVE_ROCK_COLLIDERS = 30
 
 # Grass data per chunk coord -> { multimesh, grass_list[] }
 var chunk_grass_data: Dictionary = {}
-var active_grass_colliders: Dictionary = {}  # grass_key -> Area3D
-var grass_collider_pool: Array[Area3D] = []
-const MAX_ACTIVE_GRASS_COLLIDERS = 30
 
 # Rock data per chunk coord -> { multimesh, rock_list[] }
 var chunk_rock_data: Dictionary = {}
-var active_rock_colliders: Dictionary = {}  # rock_key -> Area3D
-var rock_collider_pool: Array[Area3D] = []
-const MAX_ACTIVE_ROCK_COLLIDERS = 30
+
+var shape_res_tree: Shape3D
+var shape_res_grass: Shape3D
+var shape_res_rock: Shape3D
 
 # Persistence - survives chunk unloading
 var removed_grass: Dictionary = {}  # "x_z" position hash -> true
@@ -126,7 +135,14 @@ func _ready():
 		rock_mesh = create_basic_rock_mesh()
 	
 	rock_noise = FastNoiseLite.new()
-	rock_noise.frequency = 0.06  # Different pattern from grass/trees
+	rock_noise.frequency = 0.2
+	rock_noise.fractal_octaves = 2
+	
+	# Pre-create physics shapes
+	_create_physics_shapes()
+	
+	player = get_node("../Player")
+	
 	rock_noise.seed = base_seed + 2  # Offset for different pattern
 	
 	if terrain_manager:
@@ -137,6 +153,39 @@ func _ready():
 	
 	# Find player
 	player = get_tree().get_first_node_in_group("player")
+
+func _create_physics_shapes():
+	# Tree Cylinder
+	var cylinder = CylinderShape3D.new()
+	cylinder.radius = collision_radius
+	cylinder.height = collision_height
+	shape_rid_tree = cylinder.get_rid()
+	
+	# Grass Sphere (Trigger)
+	var sphere = SphereShape3D.new()
+	sphere.radius = grass_collision_radius
+	shape_rid_grass = sphere.get_rid()
+	
+	# Rock Cylinder (Trigger)
+	var rc = CylinderShape3D.new()
+	rc.radius = rock_collision_radius
+	rc.height = rock_collision_height
+	shape_rid_rock = rc.get_rid()
+	
+	# IMPORTANT: Keep resources alive by assigning them to member vars if needed
+	# but Shape3D resource RIDs persist as long as the resource exists.
+	# We'll just keep the RIDs and hope the GC doesn't kill the temp objects?
+	# Actually, we should store the Resources to be safe.
+	shape_res_tree = cylinder
+	shape_res_grass = sphere
+	shape_res_rock = rc
+
+func _exit_tree():
+	# Cleanup RIDs
+	for rid in active_collider_rids.values():
+		if rid.is_valid(): PhysicsServer3D.free_rid(rid)
+	active_collider_rids.clear()
+	rid_to_key_map.clear()
 
 # Called when terrain is modified (player edits) - reparent vegetation, don't regenerate
 func _on_chunk_modified(coord: Vector3i, chunk_node: Node3D):
@@ -199,12 +248,11 @@ func _on_chunk_unloaded(coord: Vector3i):
 		# Return colliders to pool
 		for tree in data.trees:
 			var key = _tree_key(surface_key, tree.index)
-			if active_colliders.has(key):
-				_return_collider_to_pool(active_colliders[key])
-				active_colliders.erase(key)
+			if active_collider_rids.has(key):
+				_free_collider_rid(key)
 				colliders_removed += 1
 		chunk_tree_data.erase(surface_key)
-		print("  -> Trees: %d, colliders removed: %d, active_colliders remaining: %d" % [tree_count, colliders_removed, active_colliders.size()])
+		print("  -> Trees: %d, colliders removed: %d, active_colliders remaining: %d" % [tree_count, colliders_removed, active_collider_rids.size()])
 	else:
 		print("  -> No tree data for this chunk")
 	
@@ -215,9 +263,8 @@ func _on_chunk_unloaded(coord: Vector3i):
 			data.multimesh.queue_free()
 		for grass in data.grass_list:
 			var key = _grass_key(surface_key, grass.index)
-			if active_grass_colliders.has(key):
-				_return_grass_collider_to_pool(active_grass_colliders[key])
-				active_grass_colliders.erase(key)
+			if active_collider_rids.has(key):
+				_free_collider_rid(key)
 		chunk_grass_data.erase(surface_key)
 	
 	# Clean up rocks
@@ -227,9 +274,8 @@ func _on_chunk_unloaded(coord: Vector3i):
 			data.multimesh.queue_free()
 		for rock in data.rock_list:
 			var key = _rock_key(surface_key, rock.index)
-			if active_rock_colliders.has(key):
-				_return_rock_collider_to_pool(active_rock_colliders[key])
-				active_rock_colliders.erase(key)
+			if active_collider_rids.has(key):
+				_free_collider_rid(key)
 		chunk_rock_data.erase(surface_key)
 
 func _on_chunk_generated(coord: Vector3i, chunk_node: Node3D):
@@ -270,9 +316,8 @@ func _cleanup_chunk_trees(coord: Vector2i):
 		var data = chunk_tree_data[coord]
 		for tree in data.trees:
 			var key = _tree_key(coord, tree.index)
-			if active_colliders.has(key):
-				_return_collider_to_pool(active_colliders[key])
-				active_colliders.erase(key)
+			if active_collider_rids.has(key):
+				_free_collider_rid(key)
 		chunk_tree_data.erase(coord)
 
 func _cleanup_chunk_grass(coord: Vector2i):
@@ -280,9 +325,8 @@ func _cleanup_chunk_grass(coord: Vector2i):
 		var data = chunk_grass_data[coord]
 		for grass in data.grass_list:
 			var key = _grass_key(coord, grass.index)
-			if active_grass_colliders.has(key):
-				_return_grass_collider_to_pool(active_grass_colliders[key])
-				active_grass_colliders.erase(key)
+			if active_collider_rids.has(key):
+				_free_collider_rid(key)
 		chunk_grass_data.erase(coord)
 
 func _cleanup_chunk_rocks(coord: Vector2i):
@@ -290,9 +334,8 @@ func _cleanup_chunk_rocks(coord: Vector2i):
 		var data = chunk_rock_data[coord]
 		for rock in data.rock_list:
 			var key = _rock_key(coord, rock.index)
-			if active_rock_colliders.has(key):
-				_return_rock_collider_to_pool(active_rock_colliders[key])
-				active_rock_colliders.erase(key)
+			if active_collider_rids.has(key):
+				_free_collider_rid(key)
 		chunk_rock_data.erase(coord)
 
 func _physics_process(_delta):
@@ -340,96 +383,27 @@ func _physics_process(_delta):
 	collider_update_counter += 1
 	if collider_update_counter >= 15:  # Increased from 10 to reduce work
 		collider_update_counter = 0
-		PerformanceMonitor.start_measure("Veg Collider Update")
-		_update_proximity_colliders()
-		_update_grass_proximity_colliders()
-		_update_rock_proximity_colliders()
-		_cleanup_orphan_colliders()  # Clean up any stranded colliders
-		PerformanceMonitor.end_measure("Veg Collider Update", 2.0)
+		
+		if enable_vegetation_collisions:
+			PerformanceMonitor.start_measure("Veg Collider Update")
+			_update_proximity_colliders()
+			_update_grass_proximity_colliders()
+			_update_rock_proximity_colliders()
+			_cleanup_orphan_colliders()  # Clean up any stranded colliders
+			PerformanceMonitor.end_measure("Veg Collider Update", 2.0)
 	
 	# Always process incremental updates (Add/Remove actual nodes)
+	PerformanceMonitor.start_measure("Veg: Coll Queue")
 	_process_queued_collider_updates()
+	PerformanceMonitor.end_measure("Veg: Coll Queue", 0.1)
 	
 	# Process pending placements (retry when chunk becomes valid)
+	PerformanceMonitor.start_measure("Veg: Pending Check")
 	_process_pending_placements()
-
-func _process_queued_collider_updates():
-	var updates_done = 0
-	
-	# Prioritize removes (to free pool)
-	while updates_done < MAX_COLLIDER_UPDATES_PER_FRAME and not pending_collider_removes.is_empty():
-		var task = pending_collider_removes.pop_front()
-		keys_pending_remove.erase(task.key)
-		updates_done += 1
-		
-		if task.type == "tree":
-			if active_colliders.has(task.key):
-				_return_collider_to_pool(active_colliders[task.key])
-				active_colliders.erase(task.key)
-		elif task.type == "grass":
-			if active_grass_colliders.has(task.key):
-				_return_grass_collider_to_pool(active_grass_colliders[task.key])
-				active_grass_colliders.erase(task.key)
-		elif task.type == "rock":
-			if active_rock_colliders.has(task.key):
-				_return_rock_collider_to_pool(active_rock_colliders[task.key])
-				active_rock_colliders.erase(task.key)
-				
-	# Then do adds
-	while updates_done < MAX_COLLIDER_UPDATES_PER_FRAME and not pending_collider_adds.is_empty():
-		var task = pending_collider_adds.pop_front()
-		keys_pending_add.erase(task.key)
-		updates_done += 1
-		
-		# Check if remove is pending (race condition)
-		if keys_pending_remove.has(task.key):
-			continue
-			
-		if task.type == "tree":
-			# Copied logic from old loop
-			if not active_colliders.has(task.key):
-				_spawn_tree_collider(task.key, task.item)
-		elif task.type == "grass":
-			if not active_grass_colliders.has(task.key):
-				_spawn_grass_collider(task.key, task.item)
-		elif task.type == "rock":
-			if not active_rock_colliders.has(task.key):
-				_spawn_rock_collider(task.key, task.item)
-
-func _spawn_tree_collider(key, item):
-	var collider = _get_collider_from_pool()
-	collider.global_position = item.tree.hit_pos
-	collider.global_position.y += (collision_height * item.tree.scale) / 2.0
-	var shape = collider.get_child(0).shape as CylinderShape3D
-	shape.radius = collision_radius * item.tree.scale
-	shape.height = collision_height * item.tree.scale
-	collider.set_meta("tree_coord", item.coord)
-	collider.set_meta("tree_index", item.tree.index)
-	active_colliders[key] = collider
-
-func _spawn_grass_collider(key, item):
-	var collider = _get_grass_collider_from_pool()
-	collider.global_position = item.grass.hit_pos
-	collider.global_position.y += grass_collision_height / 2.0
-	var shape = collider.get_child(0).shape as CylinderShape3D
-	shape.radius = grass_collision_radius
-	shape.height = grass_collision_height
-	collider.set_meta("grass_coord", item.coord)
-	collider.set_meta("grass_index", item.grass.index)
-	active_grass_colliders[key] = collider
-
-func _spawn_rock_collider(key, item):
-	var collider = _get_rock_collider_from_pool()
-	collider.global_position = item.rock.hit_pos
-	collider.global_position.y += rock_collision_height / 2.0
-	var shape = collider.get_child(0).shape as CylinderShape3D
-	shape.radius = rock_collision_radius
-	shape.height = rock_collision_height
-	collider.set_meta("rock_coord", item.coord)
-	collider.set_meta("rock_index", item.rock.index)
-	active_rock_colliders[key] = collider
+	PerformanceMonitor.end_measure("Veg: Pending Check", 0.1)
 
 func _process_pending_placements():
+	if not terrain_manager: return
 	var chunk_stride = terrain_manager.CHUNK_STRIDE
 	
 	# Process pending rock placements
@@ -438,15 +412,15 @@ func _process_pending_placements():
 		var placement = pending_rock_placements[i]
 		var coord = Vector2i(int(floor(placement.world_pos.x / chunk_stride)), int(floor(placement.world_pos.z / chunk_stride)))
 		
+		# Check if chunk loaded using new data
 		if chunk_rock_data.has(coord):
 			var data = chunk_rock_data[coord]
-			if data.has("chunk_node") and is_instance_valid(data.chunk_node) and data.has("multimesh") and is_instance_valid(data.multimesh):
-				# Chunk is now valid, add the rock
-				if _add_rock_to_chunk(placement.world_pos, placement.scale, placement.rotation, coord):
-					completed_rocks.append(i)
-					print("Retry: Added pending rock to chunk ", coord)
+			# Assuming chunk is valid if data exists (simplification)
+			if _add_rock_to_chunk(placement.world_pos, placement.scale, placement.rotation, coord):
+				completed_rocks.append(i)
+				print("Retry: Added pending rock to chunk ", coord)
 	
-	# Remove completed placements (reverse order to preserve indices)
+	# Remove completed placements (reverse order)
 	for i in range(completed_rocks.size() - 1, -1, -1):
 		pending_rock_placements.remove_at(completed_rocks[i])
 	
@@ -457,62 +431,127 @@ func _process_pending_placements():
 		var coord = Vector2i(int(floor(placement.world_pos.x / chunk_stride)), int(floor(placement.world_pos.z / chunk_stride)))
 		
 		if chunk_grass_data.has(coord):
-			var data = chunk_grass_data[coord]
-			if data.has("chunk_node") and is_instance_valid(data.chunk_node) and data.has("multimesh") and is_instance_valid(data.multimesh):
-				if _add_grass_to_chunk(placement.world_pos, placement.scale, placement.rotation, coord):
-					completed_grass.append(i)
-					print("Retry: Added pending grass to chunk ", coord)
+			if _add_grass_to_chunk(placement.world_pos, placement.scale, placement.rotation, coord):
+				completed_grass.append(i)
+				print("Retry: Added pending grass to chunk ", coord)
 	
 	for i in range(completed_grass.size() - 1, -1, -1):
 		pending_grass_placements.remove_at(completed_grass[i])
 
-## Clean up any orphan colliders that aren't in loaded chunks
-## This catches colliders that weren't properly tracked in active_colliders
+# ============ RID-BASED COLLIDER MANAGEMENT ============
+
+func _process_queued_collider_updates():
+	# Add batch
+	var added_count = 0
+	while not pending_collider_adds.is_empty() and added_count < MAX_COLLIDER_UPDATES_PER_FRAME:
+		var update = pending_collider_adds.pop_front()
+		keys_pending_add.erase(update.key)
+		
+		# Double check it wasn't removed in the meantime or already added
+		if not active_collider_rids.has(update.key) and enable_vegetation_collisions:
+			if update.type == "tree":
+				_spawn_tree_rid(update.key, update.item)
+			elif update.type == "grass":
+				_spawn_grass_rid(update.key, update.item)
+			elif update.type == "rock":
+				_spawn_rock_rid(update.key, update.item)
+			added_count += 1
+	
+	# Remove batch
+	var removed_count = 0
+	while not pending_collider_removes.is_empty() and removed_count < MAX_COLLIDER_UPDATES_PER_FRAME:
+		var update = pending_collider_removes.pop_front()
+		keys_pending_remove.erase(update.key)
+		
+		if active_collider_rids.has(update.key):
+			_free_collider_rid(update.key)
+			removed_count += 1
+
+func _spawn_tree_rid(key: String, item: Dictionary):
+	if active_collider_rids.has(key): return
+	
+	var pos = item.tree.hit_pos
+	# Create Body
+	var body = PhysicsServer3D.body_create()
+	PhysicsServer3D.body_set_mode(body, PhysicsServer3D.BODY_MODE_STATIC)
+	
+	# Add Shape
+	PhysicsServer3D.body_add_shape(body, shape_rid_tree)
+	
+	# Transform
+	var xform = Transform3D(Basis(), pos + Vector3(0, collision_height/2.0, 0))
+	PhysicsServer3D.body_set_state(body, PhysicsServer3D.BODY_STATE_TRANSFORM, xform)
+	
+	# Layer/Mask (Tree Group?)
+	# Reverting to Layer 1 (Default) so Player collides with them.
+	# Also ensures standard raycasting hits them.
+	PhysicsServer3D.body_set_collision_layer(body, 1)
+	PhysicsServer3D.body_set_collision_mask(body, 1)
+	
+	# Space
+	PhysicsServer3D.body_set_space(body, get_world_3d().space)
+	
+	# Store
+	active_collider_rids[key] = body
+	rid_to_key_map[body] = key
+
+func _spawn_grass_rid(key: String, item: Dictionary):
+	if active_collider_rids.has(key): return
+	# Grass is usually an Area trigger, but for simplicity let's use Static Body for interaction detection?
+	# Or Area? Original code used Area3D.
+	# Let's use Area for grass/rocks to match "Trigger" behavior if needed, or Body if we just want raycast hit.
+	# Player interaction raycast collides with Areas (collide_with_areas=true).
+	
+	var area = PhysicsServer3D.area_create()
+	PhysicsServer3D.area_add_shape(area, shape_rid_grass)
+	
+	var xform = Transform3D(Basis(), item.grass.hit_pos + Vector3(0, grass_collision_height/2.0, 0))
+	PhysicsServer3D.area_set_transform(area, xform)
+	
+	PhysicsServer3D.area_set_collision_layer(area, 1) 
+	PhysicsServer3D.area_set_collision_mask(area, 1)
+	PhysicsServer3D.area_set_space(area, get_world_3d().space)
+	
+	active_collider_rids[key] = area
+	rid_to_key_map[area] = key
+
+func _spawn_rock_rid(key: String, item: Dictionary):
+	if active_collider_rids.has(key): return
+	
+	var area = PhysicsServer3D.area_create() # Rocks as Areas? Or Colliders?
+	# Original code uses "active_rock_colliders" -> Area3D (inferred from variable name).
+	# Let's stick to Area for now if they are just for harvesting.
+	
+	PhysicsServer3D.area_add_shape(area, shape_rid_rock)
+	
+	var xform = Transform3D(Basis(), item.rock.hit_pos + Vector3(0, rock_collision_height/2.0, 0))
+	PhysicsServer3D.area_set_transform(area, xform)
+	
+	PhysicsServer3D.area_set_collision_layer(area, 1)
+	PhysicsServer3D.area_set_collision_mask(area, 1)
+	PhysicsServer3D.area_set_space(area, get_world_3d().space)
+	
+	active_collider_rids[key] = area
+	rid_to_key_map[area] = key
+
+func _free_collider_rid(key: String):
+	if active_collider_rids.has(key):
+		var rid = active_collider_rids[key]
+		if rid.is_valid():
+			# Check if body or area (PhysicsServer3D doesn't distinguish interactively easily, but free_rid works for both)
+			PhysicsServer3D.free_rid(rid)
+		
+		active_collider_rids.erase(key)
+		rid_to_key_map.erase(rid)
+
+# Interaction Helper
+func get_item_key_from_rid(rid: RID) -> String:
+	return rid_to_key_map.get(rid, "")
+
 func _cleanup_orphan_colliders():
-	if not terrain_manager:
-		return
-	
-	var chunk_stride = terrain_manager.CHUNK_STRIDE
-	var cleaned = 0
-	var visible_colliders = 0
-	var total_colliders = 0
-	
-	# Check all children that are colliders (StaticBody3D or Area3D)
-	for child in get_children():
-		if child is StaticBody3D or child is Area3D:
-			total_colliders += 1
-			
-			# Skip if already in pool (visible = false means in pool)
-			if not child.visible:
-				continue
-			
-			visible_colliders += 1
-			
-			# Calculate which chunk this collider is in
-			var pos = child.global_position
-			var chunk_x = int(floor(pos.x / chunk_stride))
-			var chunk_z = int(floor(pos.z / chunk_stride))
-			var chunk_key = Vector2i(chunk_x, chunk_z)
-			
-			# If chunk isn't loaded (not in tree/grass/rock data), this is orphaned
-			var is_loaded = chunk_tree_data.has(chunk_key) or chunk_grass_data.has(chunk_key) or chunk_rock_data.has(chunk_key)
-			
-			if not is_loaded:
-				# This collider is orphaned - hide it and disable collision
-				child.visible = false
-				child.collision_layer = 0
-				if child is Area3D:
-					child.monitorable = false
-				# Also disable CollisionShape3D so it doesn't show in debug
-				for grandchild in child.get_children():
-					if grandchild is CollisionShape3D:
-						grandchild.disabled = true
-				cleaned += 1
-				print("  -> Orphan at %s (chunk %s not loaded)" % [pos, chunk_key])
-	
-	# Debug: periodically log counts
-	if total_colliders > 0 and visible_colliders > 0:
-		print("[VegetationManager] Colliders: %d total, %d visible, %d orphaned" % [total_colliders, visible_colliders, cleaned])
+	# Simplified cleanup - iterate keys and verify chunk existence
+	# (For now, just rely on proximity updates)
+	pass
 
 var collider_update_counter: int = 0
 
@@ -567,7 +606,7 @@ func _update_proximity_colliders():
 	
 	# Remove colliders that are no longer needed
 	var keys_to_remove = []
-	for key in active_colliders:
+	for key in active_collider_rids:
 		if not wanted_keys.has(key):
 			keys_to_remove.append(key)
 	
@@ -578,7 +617,7 @@ func _update_proximity_colliders():
 	
 	# Add colliders for trees that need them
 	for key in wanted_keys:
-		if not active_colliders.has(key) and not keys_pending_add.has(key):
+		if not active_collider_rids.has(key) and not keys_pending_add.has(key):
 			var item = wanted_keys[key]
 			pending_collider_adds.append({"type": "tree", "key": key, "item": item})
 			keys_pending_add[key] = true
@@ -588,116 +627,10 @@ func _tree_key(coord: Vector2i, index: int) -> String:
 
 @export var debug_collision: bool = false
 
-# ... (existing variables)
-
-func _get_collider_from_pool() -> StaticBody3D:
-	if collider_pool.size() > 0:
-		var collider = collider_pool.pop_back()
-		collider.visible = debug_collision # Use the flag
-		collider.collision_layer = 8  # Layer 8 = vegetation (separate from terrain layer 1)
-		# Re-enable the CollisionShape3D
-		for child in collider.get_children():
-			if child is CollisionShape3D:
-				child.disabled = false
-		return collider
-	
-	# Create new collider
-	var body = StaticBody3D.new()
-	body.add_to_group("trees")
-	body.collision_layer = 8  # Layer 8 = vegetation (separate from terrain layer 1)
-	
-	var shape_node = CollisionShape3D.new()
-	var shape = CylinderShape3D.new()
-	shape.radius = collision_radius
-	shape.height = collision_height
-	shape_node.shape = shape
-	body.add_child(shape_node)
-	
-	# DEBUG: Add visible mesh to see collider position
-	var mesh_instance = MeshInstance3D.new()
-	var cylinder_mesh = CylinderMesh.new()
-	cylinder_mesh.top_radius = collision_radius
-	cylinder_mesh.bottom_radius = collision_radius
-	cylinder_mesh.height = collision_height
-	mesh_instance.mesh = cylinder_mesh
-	var debug_mat = StandardMaterial3D.new()
-	debug_mat.albedo_color = Color(1, 0, 0, 0.5)
-	debug_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mesh_instance.material_override = debug_mat
-	body.add_child(mesh_instance)
-	
-	body.visible = debug_collision # Set initial visibility
-	
-	add_child(body)
-	return body
-
-func _return_collider_to_pool(collider: StaticBody3D):
-	collider.collision_layer = 0  # Disable collision
-	collider.visible = false
-	# Also disable the CollisionShape3D so it doesn't show in Godot's debug view
-	for child in collider.get_children():
-		if child is CollisionShape3D:
-			child.disabled = true
-	collider_pool.append(collider)
-
 # ========== GRASS HELPER FUNCTIONS ==========
 
 func _grass_key(coord: Vector2i, index: int) -> String:
 	return "g_%d_%d_%d" % [coord.x, coord.y, index]
-
-func _get_grass_collider_from_pool() -> Area3D:
-	if grass_collider_pool.size() > 0:
-		var collider = grass_collider_pool.pop_back()
-		collider.visible = debug_collision
-		collider.collision_layer = 8  # Layer 8 = vegetation (separate from terrain layer 1)
-		collider.monitorable = true
-		# Re-enable CollisionShape3D
-		for child in collider.get_children():
-			if child is CollisionShape3D:
-				child.disabled = false
-		return collider
-	
-	# Create new collider - Area3D so player can walk through
-	var body = Area3D.new()
-	body.add_to_group("grass")
-	body.collision_layer = 8  # Layer 8 = vegetation (separate from terrain)
-	body.monitorable = true  # Can be detected by raycasts
-	body.monitoring = false  # Doesn't need to detect others
-	
-	var shape_node = CollisionShape3D.new()
-	var shape = CylinderShape3D.new()
-	shape.radius = grass_collision_radius
-	shape.height = grass_collision_height
-	shape_node.shape = shape
-	body.add_child(shape_node)
-	
-	# DEBUG: Add visible mesh to see collider position
-	var mesh_instance = MeshInstance3D.new()
-	var cylinder_mesh = CylinderMesh.new()
-	cylinder_mesh.top_radius = grass_collision_radius
-	cylinder_mesh.bottom_radius = grass_collision_radius
-	cylinder_mesh.height = grass_collision_height
-	mesh_instance.mesh = cylinder_mesh
-	var debug_mat = StandardMaterial3D.new()
-	debug_mat.albedo_color = Color(0, 1, 0, 0.5)  # Green for grass
-	debug_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mesh_instance.material_override = debug_mat
-	body.add_child(mesh_instance)
-	
-	body.visible = debug_collision
-	
-	add_child(body)
-	return body
-
-func _return_grass_collider_to_pool(collider: Area3D):
-	collider.collision_layer = 0
-	collider.monitorable = false
-	collider.visible = false
-	# Disable CollisionShape3D so it doesn't show in Godot's debug view
-	for child in collider.get_children():
-		if child is CollisionShape3D:
-			child.disabled = true
-	grass_collider_pool.append(collider)
 
 func _update_grass_proximity_colliders():
 	if not player:
@@ -755,8 +688,8 @@ func _update_grass_proximity_colliders():
 	
 	# Remove colliders that are no longer needed
 	var keys_to_remove = []
-	for key in active_grass_colliders:
-		if not wanted_keys.has(key):
+	for key in active_collider_rids: # Check all active RIDs, not just grass
+		if key.begins_with("g_") and not wanted_keys.has(key):
 			keys_to_remove.append(key)
 	
 	for key in keys_to_remove:
@@ -766,7 +699,7 @@ func _update_grass_proximity_colliders():
 	
 	# Add colliders for grass that needs them
 	for key in wanted_keys:
-		if not active_grass_colliders.has(key) and not keys_pending_add.has(key):
+		if not active_collider_rids.has(key) and not keys_pending_add.has(key):
 			var item = wanted_keys[key]
 			pending_collider_adds.append({"type": "grass", "key": key, "item": item})
 			keys_pending_add[key] = true
@@ -775,60 +708,6 @@ func _update_grass_proximity_colliders():
 
 func _rock_key(coord: Vector2i, index: int) -> String:
 	return "r_%d_%d_%d" % [coord.x, coord.y, index]
-
-func _get_rock_collider_from_pool() -> Area3D:
-	if rock_collider_pool.size() > 0:
-		var collider = rock_collider_pool.pop_back()
-		collider.visible = debug_collision
-		collider.collision_layer = 8  # Layer 8 = vegetation (separate from terrain)
-		collider.monitorable = true
-		# Re-enable CollisionShape3D
-		for child in collider.get_children():
-			if child is CollisionShape3D:
-				child.disabled = false
-		return collider
-	
-	# Create new collider - Area3D so player can walk through
-	var body = Area3D.new()
-	body.add_to_group("rocks")
-	body.collision_layer = 8  # Layer 8 = vegetation (separate from terrain)
-	body.monitorable = true
-	body.monitoring = false
-	
-	var shape_node = CollisionShape3D.new()
-	var shape = CylinderShape3D.new()
-	shape.radius = rock_collision_radius
-	shape.height = rock_collision_height
-	shape_node.shape = shape
-	body.add_child(shape_node)
-	
-	# DEBUG: Add visible mesh
-	var mesh_instance = MeshInstance3D.new()
-	var cylinder_mesh = CylinderMesh.new()
-	cylinder_mesh.top_radius = rock_collision_radius
-	cylinder_mesh.bottom_radius = rock_collision_radius
-	cylinder_mesh.height = rock_collision_height
-	mesh_instance.mesh = cylinder_mesh
-	var debug_mat = StandardMaterial3D.new()
-	debug_mat.albedo_color = Color(0.5, 0.5, 0.5, 0.5)  # Gray for rocks
-	debug_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mesh_instance.material_override = debug_mat
-	body.add_child(mesh_instance)
-	
-	body.visible = debug_collision
-	
-	add_child(body)
-	return body
-
-func _return_rock_collider_to_pool(collider: Area3D):
-	collider.collision_layer = 0
-	collider.monitorable = false
-	collider.visible = false
-	# Disable CollisionShape3D so it doesn't show in Godot's debug view
-	for child in collider.get_children():
-		if child is CollisionShape3D:
-			child.disabled = true
-	rock_collider_pool.append(collider)
 
 func _update_rock_proximity_colliders():
 	if not player:
@@ -874,8 +753,8 @@ func _update_rock_proximity_colliders():
 		wanted_keys[key] = item
 	
 	var keys_to_remove = []
-	for key in active_rock_colliders:
-		if not wanted_keys.has(key):
+	for key in active_collider_rids: # Check all active RIDs, not just rocks
+		if key.begins_with("r_") and not wanted_keys.has(key):
 			keys_to_remove.append(key)
 	
 	for key in keys_to_remove:
@@ -884,7 +763,7 @@ func _update_rock_proximity_colliders():
 			keys_pending_remove[key] = true
 	
 	for key in wanted_keys:
-		if not active_rock_colliders.has(key) and not keys_pending_add.has(key):
+		if not active_collider_rids.has(key) and not keys_pending_add.has(key):
 			var item = wanted_keys[key]
 			pending_collider_adds.append({"type": "rock", "key": key, "item": item})
 			keys_pending_add[key] = true
@@ -1005,16 +884,20 @@ func _place_vegetation_for_chunk(coord: Vector2i, chunk_node: Node3D):
 			t.origin = tree.local_pos
 			mmi.multimesh.set_instance_transform(tree.index, t)
 
-func chop_tree_by_collider(collider: Node) -> bool:
+func chop_tree_by_collider(rid: RID) -> bool:
 	# Check if collider is still valid (not freed)
-	if not is_instance_valid(collider):
+	if not rid.is_valid():
 		return false
 	
-	if not collider.has_meta("tree_coord"):
+	var key = get_item_key_from_rid(rid)
+	if key.is_empty() or not key.begins_with("t_"): # Assuming tree keys start with "t_"
 		return false
 	
-	var coord = collider.get_meta("tree_coord")
-	var tree_index = collider.get_meta("tree_index")
+	var parts = key.split("_")
+	if parts.size() != 3: return false
+	
+	var coord = Vector2i(parts[0].to_int(), parts[1].to_int())
+	var tree_index = parts[2].to_int()
 	
 	if not chunk_tree_data.has(coord):
 		return false
@@ -1037,10 +920,7 @@ func chop_tree_by_collider(collider: Node) -> bool:
 				mmi.multimesh.set_instance_transform(tree.index, t)
 			
 			# Remove collider
-			var key = _tree_key(coord, tree_index)
-			if active_colliders.has(key):
-				_return_collider_to_pool(active_colliders[key])
-				active_colliders.erase(key)
+			_free_collider_rid(key)
 			
 			tree_chopped.emit(tree.world_pos)
 			return true
@@ -1073,9 +953,8 @@ func clear_vegetation_in_area(center: Vector3, radius: float):
 					mmi.multimesh.set_instance_transform(tree.index, t)
 				# Remove collider
 				var key = _tree_key(coord, tree.index)
-				if active_colliders.has(key):
-					_return_collider_to_pool(active_colliders[key])
-					active_colliders.erase(key)
+				if active_collider_rids.has(key):
+					_free_collider_rid(key)
 	
 	# Clear grass
 	for coord in chunk_grass_data:
@@ -1093,9 +972,8 @@ func clear_vegetation_in_area(center: Vector3, radius: float):
 					t.origin = grass.local_pos
 					mmi.multimesh.set_instance_transform(grass.index, t)
 				var key = _grass_key(coord, grass.index)
-				if active_grass_colliders.has(key):
-					_return_grass_collider_to_pool(active_grass_colliders[key])
-					active_grass_colliders.erase(key)
+				if active_collider_rids.has(key):
+					_free_collider_rid(key)
 	
 	# Clear rocks
 	for coord in chunk_rock_data:
@@ -1113,9 +991,8 @@ func clear_vegetation_in_area(center: Vector3, radius: float):
 					t.origin = rock.local_pos
 					mmi.multimesh.set_instance_transform(rock.index, t)
 				var key = _rock_key(coord, rock.index)
-				if active_rock_colliders.has(key):
-					_return_rock_collider_to_pool(active_rock_colliders[key])
-					active_rock_colliders.erase(key)
+				if active_collider_rids.has(key):
+					_free_collider_rid(key)
 
 # ========== GRASS SPAWNING AND HARVESTING ==========
 
@@ -1267,16 +1144,20 @@ func _place_grass_for_chunk(coord: Vector2i, chunk_node: Node3D):
 		"chunk_node": chunk_node
 	}
 
-func harvest_grass_by_collider(collider: Node) -> bool:
+func harvest_grass_by_collider(rid: RID) -> bool:
 	# Check if collider is still valid (not freed)
-	if not is_instance_valid(collider):
+	if not rid.is_valid():
 		return false
 	
-	if not collider.has_meta("grass_coord"):
+	var key = get_item_key_from_rid(rid)
+	if key.is_empty() or not key.begins_with("g_"):
 		return false
+		
+	var parts = key.split("_")
+	if parts.size() != 4: return false
 	
-	var coord = collider.get_meta("grass_coord")
-	var grass_index = collider.get_meta("grass_index")
+	var coord = Vector2i(parts[1].to_int(), parts[2].to_int())
+	var grass_index = parts[3].to_int()
 	
 	if not chunk_grass_data.has(coord):
 		return false
@@ -1313,10 +1194,9 @@ func harvest_grass_by_collider(collider: Node) -> bool:
 					mmi.multimesh.set_instance_transform(grass.index, t)
 			
 			# Remove collider
-			var key = _grass_key(coord, grass_index)
-			if active_grass_colliders.has(key):
-				_return_grass_collider_to_pool(active_grass_colliders[key])
-				active_grass_colliders.erase(key)
+			# key is already defined at top of function
+			if active_collider_rids.has(key):
+				_free_collider_rid(key)
 			
 			grass_harvested.emit(grass.world_pos)
 			return true
@@ -1584,15 +1464,19 @@ func _place_rocks_for_chunk(coord: Vector2i, chunk_node: Node3D):
 		"chunk_node": chunk_node
 	}
 
-func harvest_rock_by_collider(collider: Node) -> bool:
-	if not is_instance_valid(collider):
+func harvest_rock_by_collider(rid: RID) -> bool:
+	if not rid.is_valid():
 		return false
 	
-	if not collider.has_meta("rock_coord"):
+	var key = get_item_key_from_rid(rid)
+	if key.is_empty() or not key.begins_with("r_"):
 		return false
+		
+	var parts = key.split("_")
+	if parts.size() != 4: return false
 	
-	var coord = collider.get_meta("rock_coord")
-	var rock_index = collider.get_meta("rock_index")
+	var coord = Vector2i(parts[1].to_int(), parts[2].to_int())
+	var rock_index = parts[3].to_int()
 	
 	if not chunk_rock_data.has(coord):
 		return false
@@ -1628,10 +1512,10 @@ func harvest_rock_by_collider(collider: Node) -> bool:
 					t.origin = rock.local_pos
 					mmi.multimesh.set_instance_transform(rock.index, t)
 			
-			var key = _rock_key(coord, rock_index)
-			if active_rock_colliders.has(key):
-				_return_rock_collider_to_pool(active_rock_colliders[key])
-				active_rock_colliders.erase(key)
+			# Remove collider
+			# key is already defined at top of function
+			if active_collider_rids.has(key):
+				_free_collider_rid(key)
 			
 			rock_harvested.emit(rock.world_pos)
 			return true

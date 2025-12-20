@@ -37,3 +37,9 @@ func _process(delta):
 	var frame_ms = delta * 1000.0
 	if frame_ms > THRESHOLD_FRAME_TIME:
 		log_spike("Frame Time", frame_ms, THRESHOLD_FRAME_TIME)
+		# Add Context: Rendering Stats
+		var draw_calls = Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		var objects = Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
+		var video_mem = Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / (1024.0 * 1024.0)
+		var physics_time = Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+		print("[STATS] Draw Calls: %d, Objects: %d, VRAM: %.1f MB, Phys: %.2f ms" % [draw_calls, objects, video_mem, physics_time])

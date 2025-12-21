@@ -135,6 +135,12 @@ var stored_modifications: Dictionary = {}
 # Format: Array of { "position": Vector3, "radius": int, "pending_coords": Array[Vector3i] }
 var pending_spawn_zones: Array = []
 
+# Procedural Carve Primitives (applied during gen_density)
+# Format: Array of { "pos": Vector3, "radius": float, "size": Vector3, "shape": int }
+var procedural_carves: Array = []
+var procedural_carve_buffer_rid: RID
+const MAX_PROCEDURAL_CARVES = 512
+
 func _ready():
 	mutex = Mutex.new()
 	semaphore = Semaphore.new()
@@ -514,6 +520,87 @@ func get_chunk_surface_height(coord: Vector3i, local_x: int, local_z: int) -> fl
 		prev_density = density
 		
 	return -1000.0
+
+## Add a procedural carve zone (applied during generation)
+## shape: 0 = Sphere, 1 = Box
+func add_procedural_carve(pos: Vector3, size: Vector3, shape: int = 1):
+	var radius = size.x # For sphere
+	mutex.lock()
+	procedural_carves.append({
+		"pos": pos,
+		"radius": radius,
+		"size": size,
+		"shape": shape
+	})
+	
+	if procedural_carves.size() > MAX_PROCEDURAL_CARVES:
+		procedural_carves.remove_at(0)
+	mutex.unlock()
+	
+	# Trigger refresh for chunks within bounds
+	var bounds_half = size if shape == 1 else Vector3(radius, radius, radius)
+	var min_pos = pos - bounds_half - Vector3(1, 1, 1)
+	var max_pos = pos + bounds_half + Vector3(1, 1, 1)
+	
+	var min_chunk_x = int(floor(min_pos.x / CHUNK_STRIDE))
+	var max_chunk_x = int(floor(max_pos.x / CHUNK_STRIDE))
+	var min_chunk_y = int(floor(min_pos.y / CHUNK_STRIDE))
+	var max_chunk_y = int(floor(max_pos.y / CHUNK_STRIDE))
+	var min_chunk_z = int(floor(min_pos.z / CHUNK_STRIDE))
+	var max_chunk_z = int(floor(max_pos.z / CHUNK_STRIDE))
+	
+	for cx in range(min_chunk_x, max_chunk_x + 1):
+		for cy in range(min_chunk_y, max_chunk_y + 1):
+			for cz in range(min_chunk_z, max_chunk_z + 1):
+				var coord = Vector3i(cx, cy, cz)
+				if active_chunks.has(coord):
+					# Force regenerate for already loaded chunk to apply new carving
+					force_regenerate_chunk(coord)
+
+## Force regeneration of a chunk (used for carving updates)
+func force_regenerate_chunk(coord: Vector3i):
+	var chunk_pos = Vector3(coord.x * CHUNK_STRIDE, coord.y * CHUNK_STRIDE, coord.z * CHUNK_STRIDE)
+	var task = { "type": "generate", "coord": coord, "pos": chunk_pos }
+	
+	mutex.lock()
+	# Don't duplicate if already in queue
+	for t in task_queue:
+		if t.type == "generate" and t.coord == coord:
+			mutex.unlock()
+			return
+			
+	# Insert at front for high priority
+	task_queue.push_front(task)
+	mutex.unlock()
+	semaphore.post()
+
+func _update_procedural_carve_buffer():
+	var rd = RenderingServer.get_rendering_device()
+	if not rd or not procedural_carve_buffer_rid.is_valid():
+		return
+		
+	var data = PackedFloat32Array()
+	for carve in procedural_carves:
+		# CarvePrimitive struct:
+		# vec4 pos_radius; // xyz = world pos, w = radius or size.x
+		# vec4 size_shape; // xyz = size (if box), w = shape_type (0=Sphere, 1=Box)
+		data.append(carve.pos.x)
+		data.append(carve.pos.y)
+		data.append(carve.pos.z)
+		data.append(carve.radius)
+		
+		data.append(carve.size.x)
+		data.append(carve.size.y)
+		data.append(carve.size.z)
+		data.append(float(carve.shape))
+	
+	# Fill remainder with zeros
+	var remaining = MAX_PROCEDURAL_CARVES - procedural_carves.size()
+	if remaining > 0:
+		data.append_array(PackedFloat32Array())
+		data.resize(MAX_PROCEDURAL_CARVES * 8) # 8 floats per primitive (2x vec4)
+		
+	rd.buffer_update(procedural_carve_buffer_rid, 0, data.size() * 4, data.to_byte_array())
 
 # Updated to accept layer (0=Terrain, 1=Water) and optional material_id
 func modify_terrain(pos: Vector3, radius: float, value: float, shape: int = 0, layer: int = 0, material_id: int = -1):
@@ -949,6 +1036,10 @@ func _thread_function():
 	var pipe_mod = rd.compute_pipeline_create(sid_mod)
 	var pipe_mesh = rd.compute_pipeline_create(sid_mesh)
 	
+	# Create Procedural Carve Buffer (Local to this thread's RD)
+	var local_procedural_carve_buffer_rid = rd.storage_buffer_create(MAX_PROCEDURAL_CARVES * 32)
+	var last_carve_count = -1
+	
 	# Create REUSABLE Buffers for meshing (9 floats per vertex: pos + normal + color)
 	var output_bytes_size = MAX_TRIANGLES * 3 * 9 * 4
 	var vertex_buffer = rd.storage_buffer_create(output_bytes_size)
@@ -965,6 +1056,30 @@ func _thread_function():
 	while true:
 		# 1. Check for new tasks FIRST (prioritize modifications before completing in-flight work)
 		semaphore.wait()
+		
+		# Update Procedural Carve Buffer if data changed (shared by all gens in this loop)
+		mutex.lock()
+		var current_carves_list = procedural_carves.duplicate()
+		mutex.unlock()
+		
+		if current_carves_list.size() != last_carve_count or last_carve_count == -1:
+			if DebugSettings.LOG_CHUNK: DebugSettings.log_chunk("Updating Procedural Carve Buffer: %d carves" % current_carves_list.size())
+			var buffer_data = PackedFloat32Array()
+			for carve in current_carves_list:
+				buffer_data.append(carve.pos.x)
+				buffer_data.append(carve.pos.y)
+				buffer_data.append(carve.pos.z)
+				buffer_data.append(carve.radius)
+				buffer_data.append(carve.size.x)
+				buffer_data.append(carve.size.y)
+				buffer_data.append(carve.size.z)
+				buffer_data.append(float(carve.shape))
+			
+			if buffer_data.size() < MAX_PROCEDURAL_CARVES * 8:
+				buffer_data.resize(MAX_PROCEDURAL_CARVES * 8)
+				
+			rd.buffer_update(local_procedural_carve_buffer_rid, 0, buffer_data.size() * 4, buffer_data.to_byte_array())
+			last_carve_count = current_carves_list.size()
 		
 		mutex.lock()
 		if exit_thread:
@@ -1002,7 +1117,7 @@ func _thread_function():
 				in_flight.clear()
 			
 			# Dispatch all GPU work, NO sync - will be completed next iteration
-			var flight_data = _dispatch_chunk_generation(rd, task, sid_gen, sid_gen_water, sid_mod, pipe_gen, pipe_gen_water, pipe_mod)
+			var flight_data = _dispatch_chunk_generation(rd, task, sid_gen, sid_gen_water, sid_mod, pipe_gen, pipe_gen_water, pipe_mod, local_procedural_carve_buffer_rid, last_carve_count)
 			if flight_data:
 				in_flight.append(flight_data)
 				rd.submit()  # Submit but don't sync - let GPU work while we process more
@@ -1046,7 +1161,7 @@ func _thread_function():
 	rd.free()
 
 # Dispatch generation work WITHOUT syncing - returns in-flight data for later readback
-func _dispatch_chunk_generation(rd: RenderingDevice, task, sid_gen, sid_gen_water, sid_mod, pipe_gen, pipe_gen_water, pipe_mod) -> Dictionary:
+func _dispatch_chunk_generation(rd: RenderingDevice, task, sid_gen, sid_gen_water, sid_mod, pipe_gen, pipe_gen_water, pipe_mod, local_procedural_carve_buffer_rid: RID, carve_count: int) -> Dictionary:
 	var chunk_pos = task.pos
 	var coord = task.coord
 	var density_bytes = DENSITY_GRID_SIZE * DENSITY_GRID_SIZE * DENSITY_GRID_SIZE * 4
@@ -1068,14 +1183,29 @@ func _dispatch_chunk_generation(rd: RenderingDevice, task, sid_gen, sid_gen_wate
 	u_material_t.binding = 1
 	u_material_t.add_id(mat_buf_terrain)
 	
-	var set_gen_t = rd.uniform_set_create([u_density_t, u_material_t], sid_gen, 0)
+	# Binding 2: Procedural Carve Buffer
+	var u_carve = RDUniform.new()
+	u_carve.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	u_carve.binding = 2
+	u_carve.add_id(local_procedural_carve_buffer_rid)
+	
+	var set_gen_t = rd.uniform_set_create([u_density_t, u_material_t, u_carve], sid_gen, 0)
 	var list = rd.compute_list_begin()
 	rd.compute_list_bind_compute_pipeline(list, pipe_gen)
 	rd.compute_list_bind_uniform_set(list, set_gen_t, 0)
 	# Pass 0.0 for road spacing if disabled
 	var actual_road_spacing = procedural_road_spacing if procedural_roads_enabled else 0.0
-	var push_data_t = PackedFloat32Array([chunk_pos.x, chunk_pos.y, chunk_pos.z, 0.0, noise_frequency, terrain_height, actual_road_spacing, procedural_road_width])
-	rd.compute_list_set_push_constant(list, push_data_t.to_byte_array(), push_data_t.size() * 4)
+	
+	# Push constants: vec4 chunk_offset, float noise_freq, float terrain_height, float road_spacing, float road_width, int carve_count (Total 48 bytes with padding)
+	var push_data_t = PackedFloat32Array([
+		chunk_pos.x, chunk_pos.y, chunk_pos.z, 0.0, 
+		noise_frequency, terrain_height, actual_road_spacing, procedural_road_width
+	])
+	var push_bytes = push_data_t.to_byte_array()
+	push_bytes.resize(48) # Pad to 48 bytes
+	push_bytes.encode_s32(32, carve_count) # Use the count passed from thread loop
+	
+	rd.compute_list_set_push_constant(list, push_bytes, 48)
 	rd.compute_list_dispatch(list, 9, 9, 9)
 	rd.compute_list_end()
 	# NO sync here!
@@ -1636,6 +1766,13 @@ func _finalize_chunk_creation(item: Dictionary):
 		if data == null:
 			data = ChunkData.new()
 			active_chunks[coord] = data
+		else:
+			# CLEANUP PREVIOUS NODE IF REGENERATING
+			if data.node_terrain:
+				data.node_terrain.queue_free()
+			if data.body_rid_terrain.is_valid():
+				PhysicsServer3D.free_rid(data.body_rid_terrain)
+				data.body_rid_terrain = RID()
 			
 		data.node_terrain = result.node if not result.is_empty() else null
 		

@@ -479,15 +479,39 @@ func spawn_user_prefab(prefab_name: String, world_pos: Vector3, submerge_offset:
 	
 	# Carve terrain for submerged blocks (only in carve mode)
 	if carve_terrain:
+		# Calculate bounding box of all blocks to determine carving area
+		var min_b = Vector3(999, 999, 999)
+		var max_b = Vector3(-999, -999, -999)
+		var correction = _get_grid_correction(rotation)
 		for block in blocks:
-			var offset = block.offset
-			var rotated_offset = _rotate_offset(offset, rotation)
-			var pos = spawn_pos + Vector3(rotated_offset)
-			
-			# If this block is at or below terrain surface, carve it out
-			if pos.y <= world_pos.y:
-				if terrain_manager and terrain_manager.has_method("modify_terrain"):
-					# Dig a small box at this position (shape 1 = box, value > 0 = dig)
+			var rotated_offset = _rotate_offset(block.offset, rotation)
+			var b_pos = Vector3(rotated_offset) + correction
+			min_b.x = min(min_b.x, b_pos.x)
+			min_b.y = min(min_b.y, b_pos.y)
+			min_b.z = min(min_b.z, b_pos.z)
+			max_b.x = max(max_b.x, b_pos.x)
+			max_b.y = max(max_b.y, b_pos.y)
+			max_b.z = max(max_b.z, b_pos.z)
+		
+		# Calculate center and half-size for the procedural box carve
+		var center = (min_b + max_b) * 0.5
+		var size = (max_b - min_b) * 0.5 + Vector3(0.5, 0.5, 0.5) # Half-size with voxel padding
+		
+		# Only carve the submerged portion (from spawn_pos.y up to original world_pos.y)
+		# We center the carving box vertically around the midpoint between floor and surface
+		var carve_center = spawn_pos + center + Vector3(0.5, 0.5, 0.5)
+		
+		if DebugSettings.LOG_CHUNK:
+			print("[Carve] Prefab: %s, center=%v, size=%v, rot=%d" % [prefab_name, carve_center, size, rotation])
+		
+		if terrain_manager and terrain_manager.has_method("add_procedural_carve"):
+			terrain_manager.add_procedural_carve(carve_center, size, 1) # 1 = Box
+		else:
+			# Fallback to iterative if method not found
+			for block in blocks:
+				var rotated_offset = _rotate_offset(block.offset, rotation)
+				var pos = spawn_pos + Vector3(rotated_offset)
+				if pos.y <= world_pos.y:
 					terrain_manager.modify_terrain(pos + Vector3(0.5, 0.5, 0.5), 0.6, 1.0, 1, 0)
 	
 	# Interior carve: carve only at interior positions (where there are gaps in Y levels)

@@ -20,7 +20,21 @@ layout(push_constant) uniform PushConstants {
     float terrain_height;
     float road_spacing;  // Grid spacing for roads (0 = no procedural roads)
     float road_width;    // Width of roads
+    int carve_count;     // Number of procedural carves to apply
+    float _pad0;         // Align to 16 bytes
+    float _pad1;
+    float _pad2;
 } params;
+
+struct CarvePrimitive {
+    vec4 pos_radius; // xyz = world pos, w = radius or size.x
+    vec4 size_shape; // xyz = size (if box), w = shape_type (0=Sphere, 1=Box)
+};
+
+// Procedural carving data
+layout(set = 0, binding = 2, std430) restrict buffer CarveBuffer {
+    CarvePrimitive carves[];
+} carve_buffer;
 
 // === Noise Functions ===
 float hash(vec3 p) {
@@ -142,6 +156,41 @@ float get_road_info(vec2 pos, float spacing, out float road_height) {
     return min_dist;
 }
 
+float apply_carving(vec3 world_pos, float current_density) {
+    float result = current_density;
+    
+    for (int i = 0; i < params.carve_count; i++) {
+        CarvePrimitive c = carve_buffer.carves[i];
+        
+        if (c.size_shape.w == 1.0) {
+            // Box Shape
+            vec3 dist_vec = abs(world_pos - c.pos_radius.xyz);
+            vec3 size = c.size_shape.xyz;
+            float max_dist = max(dist_vec.x - size.x, max(dist_vec.y - size.y, dist_vec.z - size.z));
+            
+            if (max_dist <= 0.0) {
+                // If inside the box, force density to be air (positive)
+                // We use 1.0 as a standard "solid air" value
+                result = max(result, 1.0);
+            }
+        } else {
+            // Sphere Shape
+            float dist = distance(world_pos, c.pos_radius.xyz);
+            float radius = c.pos_radius.w;
+            
+            if (dist < radius) {
+                // Smooth falloff subtraction (like in modify_density.glsl)
+                float falloff = 1.0 - (dist / radius);
+                float weight = clamp(falloff, 0.0, 1.0);
+                // For carving, we want to increase density (make it more positive/air)
+                result += weight * 2.0; // Strong carve
+            }
+        }
+    }
+    
+    return result;
+}
+
 float get_density(vec3 pos) {
     vec3 world_pos = pos + params.chunk_offset.xyz;
     
@@ -166,6 +215,9 @@ float get_density(vec3 pos) {
         
         density = mix(density, road_density, blend);
     }
+    
+    // Apply procedural carving
+    density = apply_carving(world_pos, density);
     
     return density;
 }

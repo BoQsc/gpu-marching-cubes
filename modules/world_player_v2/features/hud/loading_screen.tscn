@@ -1,0 +1,45 @@
+[gd_scene load_steps=2 format=3 uid="uid://dz7y6brs4n9bu"]
+
+[ext_resource type="Script" path="res://modules/world_player_v2/features/hud/loading_screen.gd" id="1_loading"]
+
+[node name="LoadingScreen" type="CanvasLayer"]
+layer = 100
+script = ExtResource("1_loading")
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
+
+[node name="ProgressBar" type="ProgressBar" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -80.0
+offset_right = 200.0
+offset_bottom = -50.0
+grow_horizontal = 2
+grow_vertical = 0
+show_percentage = false
+
+[node name="StatusLabel" type="Label" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -110.0
+offset_right = 200.0
+offset_bottom = -85.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "Loading terrain..."
+horizontal_alignment = 1
+vertical_alignment = 1

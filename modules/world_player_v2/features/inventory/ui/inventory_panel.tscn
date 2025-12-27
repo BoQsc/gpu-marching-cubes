@@ -1,0 +1,30 @@
+[gd_scene load_steps=2 format=3 uid="uid://cy8w5aqs3m8at"]
+
+[ext_resource type="Script" path="res://modules/world_player_v2/features/inventory/ui/inventory_panel.gd" id="1_panel"]
+
+[node name="InventoryPanel" type="PanelContainer"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -230.0
+offset_top = -150.0
+offset_right = 230.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_panel")
+
+[node name="TitleLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Inventory"
+horizontal_alignment = 1
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 2
+
+[node name="GridContainer" type="GridContainer" parent="MarginContainer"]
+layout_mode = 2
+columns = 9

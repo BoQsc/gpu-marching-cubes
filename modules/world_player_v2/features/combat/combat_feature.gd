@@ -9,11 +9,19 @@ const BASE_ATTACK_COOLDOWN: float = 0.4
 const MELEE_RANGE: float = 2.5
 const TOOL_RANGE: float = 3.5
 
+# V1 Constants for combo system
+const PUNCH_COOLDOWN_TIME: float = 0.3
+const ATTACK_COOLDOWN: float = 0.3
+const COMBO_WINDOW: float = 0.8  # Time to chain combo
+const MAX_COMBO: int = 3
+
 # Cooldown state
 var attack_cooldown: float = 0.0
 var punch_ready: bool = true
 var pistol_ready: bool = true
 var axe_ready: bool = true
+var combo_count: int = 0
+var combo_timer: float = 0.0
 
 # References
 var inventory: Node = null

@@ -51,5 +51,11 @@ signal player_landed()
 signal underwater_toggled(is_underwater: bool)
 signal camera_underwater_toggled(is_underwater: bool)
 
+# Building/Terrain events (from V1 building_api.gd)
+signal block_placed(position: Vector3, block_id: int, rotation: int)
+signal block_removed(position: Vector3)
+signal object_placed(position: Vector3, object_id: int, rotation: int)
+signal terrain_modified(position: Vector3, layer: int)
+
 func _ready() -> void:
 	DebugSettings.log_player("PlayerSignalsV2: Autoload initialized")

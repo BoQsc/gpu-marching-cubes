@@ -2,6 +2,10 @@ extends Node
 class_name TerrainAPIV2
 ## TerrainAPIV2 - High-level API for terrain operations in EDITOR mode
 
+# V1 Layer constants
+const LAYER_TERRAIN: int = 0
+const LAYER_WATER: int = 1
+
 var terrain_manager: Node = null
 var player: Node = null
 

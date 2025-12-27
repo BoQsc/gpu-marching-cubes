@@ -173,27 +173,66 @@ func _handle_secondary_action(item: Dictionary) -> void:
 	
 	# Resource placement
 	if category == 3:  # RESOURCE
-		_place_resource(item)
+		_do_resource_place(item)
 
-## Place a resource
-func _place_resource(item: Dictionary) -> void:
-	var hit = player.raycast(5.0, 0xFFFFFFFF, false, true)
-	if hit.is_empty():
+## Place resource (terrain material) - paints voxel with resource's material ID
+## Also handles vegetation resource placement (fiber -> grass, rock -> rock)
+func _do_resource_place(item: Dictionary) -> void:
+	if not player:
 		return
 	
-	var position = hit.get("position", Vector3.ZERO)
-	var mat_id = item.get("material_id", -1)
+	var item_id = item.get("id", "")
 	
+	# Check if this is a vegetation resource
+	if item_id == "veg_fiber":
+		_do_vegetation_place("grass")
+		return
+	elif item_id == "veg_rock":
+		_do_vegetation_place("rock")
+		return
+	
+	# Otherwise it's a terrain resource - need terrain_manager
+	if not player.terrain_manager:
+		return
+	
+	# Get material ID from resource item (legacy: 100=Grass, 101=Stone, 102=Sand, 103=Snow)
+	# Item definitions use mat_id field (0=Grass, 1=Sand, etc) - need to check both formats
+	var mat_id = item.get("mat_id", -1)
+	DebugSettings.log_player("ModesV2: _do_resource_place item=%s mat_id_raw=%d" % [item, mat_id])
 	if mat_id < 0:
-		return
+		# Fallback: check if it has a material_id field
+		mat_id = item.get("material_id", 0)
+		DebugSettings.log_player("ModesV2: Fallback to material_id field, mat_id=%d" % mat_id)
 	
-	if player.terrain_manager and player.terrain_manager.has_method("modify_terrain"):
-		var center = Vector3(floor(position.x) + 0.5, floor(position.y) + 0.5, floor(position.z) + 0.5)
+	# CRITICAL: Add 100 offset for player-placed materials!
+	# The terrain shader only skips biome blending for mat_id >= 100
+	if mat_id < 100:
+		mat_id += 100
+		DebugSettings.log_player("ModesV2: Converted to player-placed mat_id=%d" % mat_id)
+	
+	# Use grid-aligned position if targeting is active
+	if selection_box and selection_box.visible:
+		var center = Vector3(current_target_pos) + Vector3(0.5, 0.5, 0.5)
+		# Fixed 0.6 brush size, box shape (1), terrain layer (0), with mat_id
 		player.terrain_manager.modify_terrain(center, 0.6, -0.5, 1, 0, mat_id)
-		
-		var inventory = player.get_feature("inventory")
-		if inventory:
-			inventory.consume_selected(1)
+		_consume_selected_item()
+		DebugSettings.log_player("ModesV2: Placed %s (mat:%d) at %s" % [item.get("name", "resource"), mat_id, current_target_pos])
+	else:
+		var hit = player.raycast(5.0)
+		if hit.is_empty():
+			return
+		# Target voxel outside terrain
+		var p = hit.get("position", Vector3.ZERO) + hit.get("normal", Vector3.UP) * 0.1
+		var target_pos = Vector3(floor(p.x), floor(p.y), floor(p.z)) + Vector3(0.5, 0.5, 0.5)
+		player.terrain_manager.modify_terrain(target_pos, 0.6, -0.5, 1, 0, mat_id)
+		_consume_selected_item()
+		DebugSettings.log_player("ModesV2: Placed %s (mat:%d) at %s" % [item.get("name", "resource"), mat_id, target_pos])
+
+## Consume selected item
+func _consume_selected_item() -> void:
+	var inventory = player.get_feature("inventory")
+	if inventory:
+		inventory.consume_selected(1)
 
 ## Drop selected item
 func _drop_selected_item() -> void:

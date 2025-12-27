@@ -2,6 +2,17 @@ extends "res://modules/world_player_v2/features/feature_base.gd"
 class_name FirstPersonFeatureV2
 ## FirstPersonFeature - Manages first-person visuals (arms, pistol, axe)
 
+# V1 Constants for asset paths
+const ARMS_MODEL_PATH: String = "res://game/assets/psx_first_person_arms.glb"
+const PISTOL_SCENE_PATH: String = "res://models/pistol/heavy_pistol_animated.glb"
+const AXE_SCENE_PATH: String = "res://game/assets/player_axe/1/animated_fps_axe.glb"
+const ATTACK_SOUND_PATH: String = "res://game/assets/player_axe/1/violent-sword-slice-393839.mp3"
+const PUNCH_SFX_PATH: String = "res://game/assets/classic-punch-impact-352711.mp3"
+
+# V1 Constants for view bob animation
+const BOB_FREQ: float = 10.0
+const BOB_AMP: float = 0.01
+
 # View instances
 var arms_view: Node = null
 var pistol_view: Node = null

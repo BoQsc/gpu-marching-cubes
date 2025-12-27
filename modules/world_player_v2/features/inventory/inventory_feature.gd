@@ -218,3 +218,124 @@ func load_save_data(data: Dictionary) -> void:
 		selected_hotbar = data["selected"]
 	
 	PlayerSignalsV2.inventory_changed.emit()
+
+## Get selected slot count
+func get_selected_count() -> int:
+	if selected_hotbar < 0 or selected_hotbar >= hotbar_slots.size():
+		return 0
+	return hotbar_slots[selected_hotbar].count
+
+## Decrement count at slot, returns true if item remains, false if slot emptied  
+func decrement_slot(index: int, amount: int = 1) -> bool:
+	if index < 0 or index >= hotbar_slots.size():
+		return false
+	
+	var slot = hotbar_slots[index]
+	if slot.is_empty():
+		return false
+	
+	slot.remove(amount)
+	slot_changed.emit("hotbar", index)
+	PlayerSignalsV2.inventory_changed.emit()
+	
+	if index == selected_hotbar:
+		PlayerSignalsV2.item_changed.emit(index, get_selected_item_dict())
+	
+	return not slot.is_empty()
+
+## Get slot data (legacy compatibility)
+func get_slot(index: int) -> Dictionary:
+	if index < 0 or index >= hotbar_slots.size():
+		return {"item": {"id": "empty"}, "count": 0}
+	var slot = hotbar_slots[index]
+	return {
+		"item": ItemRegistryV2.get_item_dict(slot.item_id) if not slot.is_empty() else {"id": "empty"},
+		"count": slot.count
+	}
+
+## Find slot that can stack with given item id
+func find_stack_slot(item_id: String) -> int:
+	for i in hotbar_slots.size():
+		var slot = hotbar_slots[i]
+		if slot.item_id == item_id and slot.count < MAX_STACK_SIZE:
+			return i
+	return -1
+
+## Find first empty slot
+func find_empty_slot() -> int:
+	for i in hotbar_slots.size():
+		if hotbar_slots[i].is_empty():
+			return i
+	return -1
+
+## Drop selected item as 3D pickup
+func drop_selected_item() -> void:
+	var item = get_selected_item_dict()
+	var count = get_selected_count()
+	
+	if item.get("id", "empty") == "empty" or item.get("id") == "fists" or count <= 0:
+		DebugSettings.log_player("InventoryV2: Nothing to drop")
+		return
+	
+	# Get player position for drop
+	if not player:
+		return
+	
+	var drop_pos = player.global_position + Vector3.UP * 1.0 - player.global_transform.basis.z * 1.5
+	var drop_velocity = -player.global_transform.basis.z * 3.0 + Vector3.UP * 2.0
+	
+	# Check if item has its own physics scene (like pistol)
+	var scene_path = item.get("scene", "")
+	var spawned_directly = false
+	
+	if scene_path != "":
+		var item_scene = load(scene_path)
+		if item_scene:
+			var temp_instance = item_scene.instantiate()
+			if temp_instance is RigidBody3D:
+				player.get_tree().root.add_child(temp_instance)
+				temp_instance.global_position = drop_pos
+				
+				# Add to interactable group and store item data
+				temp_instance.add_to_group("interactable")
+				temp_instance.set_meta("item_data", item.duplicate())
+				temp_instance.linear_velocity = drop_velocity
+				
+				spawned_directly = true
+			else:
+				temp_instance.queue_free()
+	
+	# Fallback: use PickupItem wrapper
+	if not spawned_directly:
+		var pickup_scene = load("res://modules/world_player_v2/pickups/pickup_item.tscn")
+		if pickup_scene:
+			var pickup = pickup_scene.instantiate()
+			player.get_tree().root.add_child(pickup)
+			pickup.global_position = drop_pos
+			
+			if pickup.has_method("set_item"):
+				pickup.set_item(item, count)
+			
+			pickup.linear_velocity = drop_velocity
+	
+	# Clear the slot
+	clear_slot(selected_hotbar)
+	DebugSettings.log_player("InventoryV2: Dropped %s x%d" % [item.get("name", "item"), count])
+
+## Set item at slot (legacy compatibility)
+func set_item_at(index: int, item: Dictionary, count: int) -> void:
+	if index < 0 or index >= hotbar_slots.size():
+		return
+	
+	var item_id = item.get("id", "empty")
+	if item_id == "empty" or count <= 0:
+		hotbar_slots[index].clear()
+	else:
+		hotbar_slots[index].set_contents(item_id, count)
+	
+	slot_changed.emit("hotbar", index)
+	PlayerSignalsV2.inventory_changed.emit()
+	
+	if index == selected_hotbar:
+		PlayerSignalsV2.item_changed.emit(index, get_selected_item_dict())
+

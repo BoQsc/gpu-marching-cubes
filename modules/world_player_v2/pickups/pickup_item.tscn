@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3 uid="uid://dw8v3xqr9k5za"]
+
+[ext_resource type="Script" path="res://modules/world_player_v2/pickups/pickup_item.gd" id="1_pickup"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_1"]
+radius = 0.25
+
+[node name="PickupItem" type="RigidBody3D" groups=["interactable", "pickup_items"]]
+collision_layer = 16
+collision_mask = 1
+script = ExtResource("1_pickup")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_1")

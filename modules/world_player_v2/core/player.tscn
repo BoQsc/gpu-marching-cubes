@@ -1,0 +1,186 @@
+[gd_scene load_steps=14 format=3 uid="uid://c7wv2xqr8k4yt"]
+
+[ext_resource type="Script" path="res://modules/world_player_v2/core/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://modules/world_player_v2/core/player_camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/movement/movement_feature.gd" id="3_movement"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/inventory/inventory_feature.gd" id="4_inventory"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/combat/combat_feature.gd" id="5_combat"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/mining/mining_feature.gd" id="6_mining"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/grabbing/grabbing_feature.gd" id="7_grabbing"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/interaction/interaction_feature.gd" id="8_interaction"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/modes/modes_feature.gd" id="9_modes"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/first_person/first_person_feature.gd" id="10_firstperson"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/hud/player_hud.gd" id="11_hud"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_1"]
+radius = 0.25
+
+[node name="WorldPlayerV2" type="CharacterBody3D" groups=["player"]]
+collision_layer = 3
+collision_mask = 137
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_1")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+current = true
+fov = 75.0
+near = 0.05
+
+[node name="Components" type="Node" parent="."]
+
+[node name="Camera" type="Node" parent="Components"]
+script = ExtResource("2_camera")
+
+[node name="Features" type="Node" parent="."]
+
+[node name="Movement" type="Node" parent="Features"]
+script = ExtResource("3_movement")
+
+[node name="Inventory" type="Node" parent="Features"]
+script = ExtResource("4_inventory")
+
+[node name="Combat" type="Node" parent="Features"]
+script = ExtResource("5_combat")
+
+[node name="Mining" type="Node" parent="Features"]
+script = ExtResource("6_mining")
+
+[node name="Grabbing" type="Node" parent="Features"]
+script = ExtResource("7_grabbing")
+
+[node name="Interaction" type="Node" parent="Features"]
+script = ExtResource("8_interaction")
+
+[node name="Modes" type="Node" parent="Features"]
+script = ExtResource("9_modes")
+
+[node name="FirstPerson" type="Node" parent="Features"]
+script = ExtResource("10_firstperson")
+
+[node name="PlayerHUD" type="CanvasLayer" parent="."]
+script = ExtResource("11_hud")
+
+[node name="ModeIndicator" type="Label" parent="PlayerHUD"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 110.0
+offset_bottom = 40.0
+text = "PLAY"
+
+[node name="Crosshair" type="TextureRect" parent="PlayerHUD"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -8.0
+offset_top = -8.0
+offset_right = 8.0
+offset_bottom = 8.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="InteractionPrompt" type="Label" parent="PlayerHUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -100.0
+offset_top = -60.0
+offset_right = 100.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 0
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="StatusBars" type="VBoxContainer" parent="PlayerHUD"]
+offset_left = 10.0
+offset_top = 50.0
+offset_right = 210.0
+offset_bottom = 110.0
+
+[node name="HealthBar" type="ProgressBar" parent="PlayerHUD/StatusBars"]
+custom_minimum_size = Vector2(200, 25)
+layout_mode = 2
+max_value = 10.0
+value = 10.0
+show_percentage = false
+
+[node name="StaminaBar" type="ProgressBar" parent="PlayerHUD/StatusBars"]
+custom_minimum_size = Vector2(200, 25)
+layout_mode = 2
+value = 100.0
+show_percentage = false
+
+[node name="HotbarContainer" type="HBoxContainer" parent="PlayerHUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -275.0
+offset_top = -70.0
+offset_right = 275.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 0
+alignment = 1
+
+[node name="SelectedItemLabel" type="Label" parent="PlayerHUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -100.0
+offset_top = -95.0
+offset_right = 100.0
+offset_bottom = -75.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "Fists"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DurabilityBar" type="ProgressBar" parent="PlayerHUD"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -100.0
+offset_top = 50.0
+offset_right = 100.0
+offset_bottom = 75.0
+grow_horizontal = 2
+value = 100.0
+show_percentage = false
+
+[node name="TargetMaterialLabel" type="Label" parent="PlayerHUD"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -100.0
+offset_top = 80.0
+offset_right = 100.0
+offset_bottom = 105.0
+grow_horizontal = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="UnderwaterOverlay" type="ColorRect" parent="PlayerHUD"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.05, 0.2, 0.12, 0.4)

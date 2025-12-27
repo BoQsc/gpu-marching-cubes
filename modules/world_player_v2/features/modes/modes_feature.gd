@@ -10,6 +10,10 @@ var editor_submode: int = 0
 
 const EDITOR_SUBMODE_NAMES = ["Terrain", "Water", "Road", "Prefab", "Fly", "OldDirt"]
 
+# Selection box for resource/bucket targeting
+var selection_box: MeshInstance3D = null
+var current_target_pos: Vector3i = Vector3i.ZERO
+
 func _input(event: InputEvent) -> void:
 	if not player:
 		return
@@ -68,14 +72,77 @@ func _route_input(event: InputEvent) -> void:
 			_handle_editor_input(event)
 
 ## Route physics process
-func _route_process(_delta: float) -> void:
+func _route_process(delta: float) -> void:
 	match current_mode:
 		Mode.PLAY:
-			pass  # Handled by individual features
+			_update_terrain_targeting()
 		Mode.BUILD:
 			pass
 		Mode.EDITOR:
 			pass
+
+## Create selection box mesh
+func _create_selection_box() -> void:
+	if selection_box:
+		return
+	
+	selection_box = MeshInstance3D.new()
+	var box_mesh = BoxMesh.new()
+	box_mesh.size = Vector3(1.01, 1.01, 1.01)
+	selection_box.mesh = box_mesh
+	
+	var material = StandardMaterial3D.new()
+	material.albedo_color = Color(1, 1, 1, 0.3)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	selection_box.material_override = material
+	
+	selection_box.visible = false
+	player.get_tree().root.add_child(selection_box)
+
+## Update terrain targeting for resource/bucket items
+func _update_terrain_targeting() -> void:
+	if not player:
+		return
+	
+	var inventory = player.get_feature("inventory")
+	if not inventory:
+		if selection_box:
+			selection_box.visible = false
+		return
+	
+	# Only show when in PLAY mode with RESOURCE or BUCKET selected
+	var item = inventory.get_selected_item_dict()
+	var category = item.get("category", 0)
+	
+	# Categories: 2=BUCKET, 3=RESOURCE
+	if category != 2 and category != 3:
+		if selection_box:
+			selection_box.visible = false
+		return
+	
+	# Create selection box if needed
+	if not selection_box:
+		_create_selection_box()
+	
+	# Raycast to find target
+	var hit = player.raycast(5.0, 0xFFFFFFFF, false, true)
+	if hit.is_empty():
+		selection_box.visible = false
+		return
+	
+	var position = hit.get("position", Vector3.ZERO)
+	var normal = hit.get("normal", Vector3.UP)
+	
+	# Calculate block position based on action
+	if category == 3:  # RESOURCE - place on surface
+		current_target_pos = Vector3i(floor(position.x + normal.x * 0.5), floor(position.y + normal.y * 0.5), floor(position.z + normal.z * 0.5))
+	else:  # BUCKET - target existing block
+		current_target_pos = Vector3i(floor(position.x), floor(position.y), floor(position.z))
+	
+	# Update selection box position
+	selection_box.global_position = Vector3(current_target_pos) + Vector3(0.5, 0.5, 0.5)
+	selection_box.visible = true
 
 ## Handle PLAY mode input
 func _handle_play_input(event: InputEvent) -> void:

@@ -216,3 +216,47 @@ func _barricade_window(window: Node) -> void:
 	if window.has_method("barricade"):
 		window.barricade()
 		PlayerSignalsV2.interaction_performed.emit(window, "barricade")
+
+## Vehicle state
+var is_in_vehicle: bool = false
+var current_vehicle: Node3D = null
+
+## Exit current vehicle
+func _exit_vehicle() -> void:
+	if not is_in_vehicle or not current_vehicle:
+		return
+	
+	DebugSettings.log_player("InteractionV2: Exiting vehicle")
+	
+	# Tell vehicle player is exiting
+	if current_vehicle.has_method("exit_vehicle"):
+		current_vehicle.exit_vehicle()
+	
+	# Re-enable player
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	player.visible = true
+	
+	# Position player near vehicle
+	if current_vehicle:
+		player.global_position = current_vehicle.global_position + Vector3(2, 1, 0)
+	
+	# Disable vehicle camera
+	if current_vehicle.has_method("set_camera_active"):
+		current_vehicle.set_camera_active(false)
+	
+	# Update vehicle manager
+	if vehicle_manager and "current_player_vehicle" in vehicle_manager:
+		vehicle_manager.current_player_vehicle = null
+		if vehicle_manager.has_signal("player_exited_vehicle"):
+			vehicle_manager.player_exited_vehicle.emit(current_vehicle)
+	
+	# Switch terrain generation back to player
+	var terrain_manager = player.terrain_manager
+	if terrain_manager and "viewer" in terrain_manager:
+		terrain_manager.viewer = player
+		DebugSettings.log_player("InteractionV2: Switched terrain viewer back to Player")
+	
+	is_in_vehicle = false
+	current_vehicle = null
+	
+	PlayerSignalsV2.interaction_performed.emit(null, "exit_vehicle")

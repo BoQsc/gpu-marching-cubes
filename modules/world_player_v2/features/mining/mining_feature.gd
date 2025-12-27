@@ -137,9 +137,19 @@ func _damage_building_block(position: Vector3, damage: int, item_id: String) -> 
 	PlayerSignalsV2.durability_hit.emit(current_hp, BLOCK_HP, "Block", durability_target)
 	
 	if block_damage[block_pos] >= BLOCK_HP:
+		# Get block type before destroying
+		var voxel_id = 0
+		if player.building_manager and player.building_manager.has_method("get_voxel"):
+			voxel_id = player.building_manager.get_voxel(block_pos)
+		
 		# Destroy block
 		if player.building_manager and player.building_manager.has_method("set_voxel"):
 			player.building_manager.set_voxel(block_pos, 0)
+		
+		# Collect building resource
+		if voxel_id > 0:
+			_collect_building_resource(voxel_id)
+		
 		block_damage.erase(block_pos)
 		PlayerSignalsV2.durability_cleared.emit()
 
@@ -186,6 +196,19 @@ func _collect_terrain_resource(mat_id: int) -> void:
 		1, 101: item_id = "stone"
 		2, 102: item_id = "sand"
 		3, 103: item_id = "snow"
+	
+	if not item_id.is_empty():
+		_collect_resource(item_id)
+
+## Collect building resource based on block ID
+func _collect_building_resource(block_id: int) -> void:
+	# Map block IDs to item IDs (based on V1 logic)
+	var item_id = ""
+	match block_id:
+		1: item_id = "stone"
+		2: item_id = "wood"
+		3: item_id = "stone"  # Brick
+		_: item_id = "stone"  # Default to stone
 	
 	if not item_id.is_empty():
 		_collect_resource(item_id)

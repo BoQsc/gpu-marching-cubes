@@ -133,32 +133,50 @@ void main() {
     if (edgeTable[cubeIndex] == 0) return;
 
     vec3 vertList[12];
-    
-    if ((edgeTable[cubeIndex] & 1) != 0)    vertList[0] = interpolate_vertex(corners[0], corners[1], densities[0], densities[1]);
-    if ((edgeTable[cubeIndex] & 2) != 0)    vertList[1] = interpolate_vertex(corners[1], corners[2], densities[1], densities[2]);
-    if ((edgeTable[cubeIndex] & 4) != 0)    vertList[2] = interpolate_vertex(corners[2], corners[3], densities[2], densities[3]);
-    if ((edgeTable[cubeIndex] & 8) != 0)    vertList[3] = interpolate_vertex(corners[3], corners[0], densities[3], densities[0]);
-    if ((edgeTable[cubeIndex] & 16) != 0)   vertList[4] = interpolate_vertex(corners[4], corners[5], densities[4], densities[5]);
-    if ((edgeTable[cubeIndex] & 32) != 0)   vertList[5] = interpolate_vertex(corners[5], corners[6], densities[5], densities[6]);
-    if ((edgeTable[cubeIndex] & 64) != 0)   vertList[6] = interpolate_vertex(corners[6], corners[7], densities[6], densities[7]);
-    if ((edgeTable[cubeIndex] & 128) != 0)  vertList[7] = interpolate_vertex(corners[7], corners[4], densities[7], densities[4]);
-    if ((edgeTable[cubeIndex] & 256) != 0)  vertList[8] = interpolate_vertex(corners[0], corners[4], densities[0], densities[4]);
-    if ((edgeTable[cubeIndex] & 512) != 0)  vertList[9] = interpolate_vertex(corners[1], corners[5], densities[1], densities[5]);
-    if ((edgeTable[cubeIndex] & 1024) != 0) vertList[10] = interpolate_vertex(corners[2], corners[6], densities[2], densities[6]);
-    if ((edgeTable[cubeIndex] & 2048) != 0) vertList[11] = interpolate_vertex(corners[3], corners[7], densities[3], densities[7]);
+    uint matList[12];
+
+    // Helper macro to interpolate vertex and pick material from solid end
+    #define PROCESS_EDGE(edge_idx, c1, c2) \
+        if ((edgeTable[cubeIndex] & (1 << edge_idx)) != 0) { \
+            vertList[edge_idx] = interpolate_vertex(corners[c1], corners[c2], densities[c1], densities[c2]); \
+            uint m1 = get_material_from_buffer(corners[c1]); \
+            uint m2 = get_material_from_buffer(corners[c2]); \
+            matList[edge_idx] = (densities[c1] < densities[c2]) ? m1 : m2; \
+        }
+
+    PROCESS_EDGE(0, 0, 1);
+    PROCESS_EDGE(1, 1, 2);
+    PROCESS_EDGE(2, 2, 3);
+    PROCESS_EDGE(3, 3, 0);
+    PROCESS_EDGE(4, 4, 5);
+    PROCESS_EDGE(5, 5, 6);
+    PROCESS_EDGE(6, 6, 7);
+    PROCESS_EDGE(7, 7, 4);
+    PROCESS_EDGE(8, 0, 4);
+    PROCESS_EDGE(9, 1, 5);
+    PROCESS_EDGE(10, 2, 6);
+    PROCESS_EDGE(11, 3, 7);
 
     for (int i = 0; triTable[cubeIndex * 16 + i] != -1; i += 3) {
         
         uint idx = atomicAdd(counter.triangle_count, 1);
         uint start_ptr = idx * 27;  // 9 floats per vertex (pos + normal + color) 
 
-        vec3 v1 = vertList[triTable[cubeIndex * 16 + i]];
-        vec3 v2 = vertList[triTable[cubeIndex * 16 + i + 1]];
-        vec3 v3 = vertList[triTable[cubeIndex * 16 + i + 2]];
+        int edge1 = triTable[cubeIndex * 16 + i];
+        int edge2 = triTable[cubeIndex * 16 + i + 1];
+        int edge3 = triTable[cubeIndex * 16 + i + 2];
 
+        vec3 v1 = vertList[edge1];
+        vec3 v2 = vertList[edge2];
+        vec3 v3 = vertList[edge3];
+
+        // Use precise materials derived from solid voxels
+        vec3 mat_color1 = material_to_color(matList[edge1]);
+        vec3 mat_color2 = material_to_color(matList[edge2]);
+        vec3 mat_color3 = material_to_color(matList[edge3]);
+        
         // Vertex 1
         vec3 n1 = get_normal(v1);
-        vec3 mat_color1 = material_to_color(get_material_from_buffer(v1));
         
         mesh_output.vertices[start_ptr + 0] = v1.x;
         mesh_output.vertices[start_ptr + 1] = v1.y;
@@ -172,7 +190,6 @@ void main() {
         
         // Vertex 3 (note: order is 1,3,2 for winding)
         vec3 n3 = get_normal(v3);
-        vec3 mat_color3 = material_to_color(get_material_from_buffer(v3));
         
         mesh_output.vertices[start_ptr + 9] = v3.x;
         mesh_output.vertices[start_ptr + 10] = v3.y;
@@ -186,7 +203,6 @@ void main() {
         
         // Vertex 2
         vec3 n2 = get_normal(v2);
-        vec3 mat_color2 = material_to_color(get_material_from_buffer(v2));
         
         mesh_output.vertices[start_ptr + 18] = v2.x;
         mesh_output.vertices[start_ptr + 19] = v2.y;

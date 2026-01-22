@@ -156,54 +156,46 @@ void main() {
         vec3 v2 = vertList[triTable[cubeIndex * 16 + i + 1]];
         vec3 v3 = vertList[triTable[cubeIndex * 16 + i + 2]];
 
-        // Get material color from the "most solid" corner of the cube
-        // This ensures the surface takes the texture of the block generating it,
-        // rather than averaging neighbors or oscillating due to rounding.
-        float min_d = 1000.0;
-        int min_idx = 0;
-        for(int k=0; k<8; k++) {
-            if(densities[k] < min_d) {
-                min_d = densities[k];
-                min_idx = k;
-            }
-        }
-        uint mat_id = get_material_from_buffer(corners[min_idx]);
-        vec3 mat_color = material_to_color(mat_id);
-        
         // Vertex 1
         vec3 n1 = get_normal(v1);
+        vec3 mat_color1 = material_to_color(get_material_from_buffer(v1));
+        
         mesh_output.vertices[start_ptr + 0] = v1.x;
         mesh_output.vertices[start_ptr + 1] = v1.y;
         mesh_output.vertices[start_ptr + 2] = v1.z;
         mesh_output.vertices[start_ptr + 3] = n1.x;
         mesh_output.vertices[start_ptr + 4] = n1.y;
         mesh_output.vertices[start_ptr + 5] = n1.z;
-        mesh_output.vertices[start_ptr + 6] = mat_color.r;
-        mesh_output.vertices[start_ptr + 7] = mat_color.g;
-        mesh_output.vertices[start_ptr + 8] = mat_color.b;
+        mesh_output.vertices[start_ptr + 6] = mat_color1.r;
+        mesh_output.vertices[start_ptr + 7] = mat_color1.g;
+        mesh_output.vertices[start_ptr + 8] = mat_color1.b;
         
         // Vertex 3 (note: order is 1,3,2 for winding)
         vec3 n3 = get_normal(v3);
+        vec3 mat_color3 = material_to_color(get_material_from_buffer(v3));
+        
         mesh_output.vertices[start_ptr + 9] = v3.x;
         mesh_output.vertices[start_ptr + 10] = v3.y;
         mesh_output.vertices[start_ptr + 11] = v3.z;
         mesh_output.vertices[start_ptr + 12] = n3.x;
         mesh_output.vertices[start_ptr + 13] = n3.y;
         mesh_output.vertices[start_ptr + 14] = n3.z;
-        mesh_output.vertices[start_ptr + 15] = mat_color.r;
-        mesh_output.vertices[start_ptr + 16] = mat_color.g;
-        mesh_output.vertices[start_ptr + 17] = mat_color.b;
+        mesh_output.vertices[start_ptr + 15] = mat_color3.r;
+        mesh_output.vertices[start_ptr + 16] = mat_color3.g;
+        mesh_output.vertices[start_ptr + 17] = mat_color3.b;
         
         // Vertex 2
         vec3 n2 = get_normal(v2);
+        vec3 mat_color2 = material_to_color(get_material_from_buffer(v2));
+        
         mesh_output.vertices[start_ptr + 18] = v2.x;
         mesh_output.vertices[start_ptr + 19] = v2.y;
         mesh_output.vertices[start_ptr + 20] = v2.z;
         mesh_output.vertices[start_ptr + 21] = n2.x;
         mesh_output.vertices[start_ptr + 22] = n2.y;
         mesh_output.vertices[start_ptr + 23] = n2.z;
-        mesh_output.vertices[start_ptr + 24] = mat_color.r;
-        mesh_output.vertices[start_ptr + 25] = mat_color.g;
-        mesh_output.vertices[start_ptr + 26] = mat_color.b;
+        mesh_output.vertices[start_ptr + 24] = mat_color2.r;
+        mesh_output.vertices[start_ptr + 25] = mat_color2.g;
+        mesh_output.vertices[start_ptr + 26] = mat_color2.b;
     }
 }

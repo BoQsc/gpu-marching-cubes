@@ -108,18 +108,18 @@ func _create_diamond_mesh() -> ArrayMesh:
 
 ## Calculate dig target using integer grid coordinates
 func _get_dig_target(hit: Dictionary) -> Vector3:
-	# Move slightly into the terrain (negative normal) to ensure we hit the solid voxel
-	var pos = hit.position - hit.normal * 0.1
+	# Move into the terrain (negative normal) to ensure we hit the solid voxel
+	# Using 0.4 ensures we reach safely into the voxel volume
+	var pos = hit.position - hit.normal * 0.4
 	var result = Vector3(round(pos.x), round(pos.y), round(pos.z))
-	# print("DIG: Hit=%s Normal=%s OffsetPos=%s Result=%s" % [hit.position, hit.normal, pos, result])
 	return result
 
 ## Calculate place target using integer grid coordinates
 func _get_place_target(hit: Dictionary) -> Vector3:
-	# Move slightly out of the terrain (positive normal) to ensure we hit the empty voxel
-	var pos = hit.position + hit.normal * 0.1
+	# Move out of the terrain (positive normal) to ensure we hit the empty voxel
+	# Using 0.4 ensures we reach safely into the voxel volume
+	var pos = hit.position + hit.normal * 0.4
 	var result = Vector3(round(pos.x), round(pos.y), round(pos.z))
-	# print("PLACE: Hit=%s Normal=%s OffsetPos=%s Result=%s" % [hit.position, hit.normal, pos, result])
 	return result
 
 ## Get strongest normal direction (returns unit vector on primary axis)

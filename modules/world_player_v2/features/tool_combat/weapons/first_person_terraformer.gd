@@ -32,7 +32,7 @@ var has_target: bool = false
 
 # Constants
 const RAYCAST_DISTANCE: float = 10.0
-const BRUSH_SIZE: float = 0.45  # Radius < 0.5 ensures we only affect the center voxel
+const BRUSH_SIZE: float = 0.55  # Radius slightly > 0.5 to ensure coverage, but < 1.0 to stay in voxel
 const BRUSH_SHAPE: int = 1  # 1 = Box shape in modify_density.glsl
 
 # Colors

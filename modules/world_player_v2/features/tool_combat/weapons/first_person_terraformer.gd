@@ -108,16 +108,15 @@ func _create_diamond_mesh() -> ArrayMesh:
 
 ## Calculate dig target using integer grid coordinates
 func _get_dig_target(hit: Dictionary) -> Vector3:
-	# Round to nearest grid point
-	var nearest = Vector3(round(hit.position.x), round(hit.position.y), round(hit.position.z))
-	# The solid voxel is AT the hit point (no offset needed)
-	return nearest
+	# Move slightly into the terrain (negative normal) to ensure we hit the solid voxel
+	var pos = hit.position - hit.normal * 0.1
+	return Vector3(round(pos.x), round(pos.y), round(pos.z))
 
 ## Calculate place target using integer grid coordinates
 func _get_place_target(hit: Dictionary) -> Vector3:
-	# Simply round to the nearest grid point where camera is aimed
-	# This targets the empty space you're looking at
-	return Vector3(round(hit.position.x), round(hit.position.y), round(hit.position.z))
+	# Move slightly out of the terrain (positive normal) to ensure we hit the empty voxel
+	var pos = hit.position + hit.normal * 0.1
+	return Vector3(round(pos.x), round(pos.y), round(pos.z))
 
 ## Get strongest normal direction (returns unit vector on primary axis)
 func _get_strongest_normal_direction(normal: Vector3) -> Vector3:

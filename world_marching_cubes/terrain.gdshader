@@ -190,6 +190,9 @@ void fragment() {
 	// Check for player-placed material override from 3D texture
 	// Player materials (100+) are written to material_map when player places blocks
 	bool is_player_placed = false;
+    /* 
+    // DISABLED: This lookup causes texture bleeding ("melting") because it uses rounding 
+    // to guess the voxel. We now rely on precise flat vertex_color from the mesh generation.
 	if (has_material_map) {
 		// Sample material map at vertex position (biased toward solid)
 		vec3 biased_pos = local_vertex - normal * 0.8;
@@ -204,6 +207,11 @@ void fragment() {
 			is_player_placed = true;
 		}
 	}
+    */
+    // Use the ID from the mesh directly
+    if (mat_id >= 100) {
+        is_player_placed = true;
+    }
 	
 	// === Material Lookup with Smooth Biome Blending ===
 	vec3 base_color;

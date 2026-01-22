@@ -32,7 +32,7 @@ var has_target: bool = false
 
 # Constants
 const RAYCAST_DISTANCE: float = 10.0
-const BRUSH_SIZE: float = 0.5  # Radius for Box shape to capture single voxel
+const BRUSH_SIZE: float = 0.45  # Radius < 0.5 ensures we only affect the center voxel
 const BRUSH_SHAPE: int = 1  # 1 = Box shape in modify_density.glsl
 
 # Colors
@@ -108,19 +108,25 @@ func _create_diamond_mesh() -> ArrayMesh:
 
 ## Calculate dig target using integer grid coordinates
 func _get_dig_target(hit: Dictionary) -> Vector3:
-	# Move into the terrain (negative normal) to ensure we hit the solid voxel
-	# Using 0.4 ensures we reach safely into the voxel volume
-	var pos = hit.position - hit.normal * 0.4
-	var result = Vector3(round(pos.x), round(pos.y), round(pos.z))
-	return result
+	# 1. Find the solid voxel we hit (step slightly inward)
+	var inside_pos = hit.position - hit.normal * 0.1
+	var solid_voxel = Vector3(round(inside_pos.x), round(inside_pos.y), round(inside_pos.z))
+	
+	# Digging targets the solid voxel itself
+	return solid_voxel
 
 ## Calculate place target using integer grid coordinates
 func _get_place_target(hit: Dictionary) -> Vector3:
-	# Move out of the terrain (positive normal) to ensure we hit the empty voxel
-	# Using 0.4 ensures we reach safely into the voxel volume
-	var pos = hit.position + hit.normal * 0.4
-	var result = Vector3(round(pos.x), round(pos.y), round(pos.z))
-	return result
+	# 1. Find the solid voxel we hit (step slightly inward)
+	# We rely on the solid voxel as the anchor because "air" targeting is unstable near surfaces
+	var inside_pos = hit.position - hit.normal * 0.1
+	var solid_voxel = Vector3(round(inside_pos.x), round(inside_pos.y), round(inside_pos.z))
+	
+	# 2. Determine which face we hit (dominant axis)
+	var grid_dir = _get_strongest_normal_direction(hit.normal)
+	
+	# 3. Step one grid unit in that direction to find the empty neighbor
+	return solid_voxel + grid_dir
 
 ## Get strongest normal direction (returns unit vector on primary axis)
 func _get_strongest_normal_direction(normal: Vector3) -> Vector3:

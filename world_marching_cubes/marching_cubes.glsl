@@ -156,8 +156,18 @@ void main() {
         vec3 v2 = vertList[triTable[cubeIndex * 16 + i + 1]];
         vec3 v3 = vertList[triTable[cubeIndex * 16 + i + 2]];
 
-        // Get material color from center of cube
-        uint mat_id = get_material_from_buffer(pos + vec3(0.5));
+        // Get material color from the "most solid" corner of the cube
+        // This ensures the surface takes the texture of the block generating it,
+        // rather than averaging neighbors or oscillating due to rounding.
+        float min_d = 1000.0;
+        int min_idx = 0;
+        for(int k=0; k<8; k++) {
+            if(densities[k] < min_d) {
+                min_d = densities[k];
+                min_idx = k;
+            }
+        }
+        uint mat_id = get_material_from_buffer(corners[min_idx]);
         vec3 mat_color = material_to_color(mat_id);
         
         // Vertex 1

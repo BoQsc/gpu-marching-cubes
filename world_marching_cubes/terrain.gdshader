@@ -47,7 +47,7 @@ uniform bool debug_show_road_zones = false;   // Toggle to show road zone detect
 
 varying vec3 world_pos;
 varying vec3 world_normal;
-varying vec3 vertex_color;  // Material color from GPU (legacy, kept for compatibility)
+flat varying vec3 vertex_color;  // Material color from GPU (flat to prevent ID interpolation artifacts)
 
 // Simple 2D hash/noise for biomes
 vec2 hash(vec2 p) {

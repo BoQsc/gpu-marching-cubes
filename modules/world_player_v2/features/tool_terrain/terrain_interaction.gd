@@ -21,21 +21,6 @@ var current_target_pos: Vector3 = Vector3.ZERO
 var has_target: bool = false
 
 # Material display - lookup and tracking
-const MATERIAL_NAMES = {
-	-1: "Unknown",
-	0: "Grass",
-	1: "Stone",
-	2: "Ore",
-	3: "Sand",
-	4: "Gravel",
-	5: "Snow",
-	6: "Road",
-	9: "Granite",
-	100: "[P] Grass",
-	101: "[P] Stone",
-	102: "[P] Sand",
-	103: "[P] Snow"
-}
 var last_target_material: String = ""
 var material_target_marker: MeshInstance3D = null
 
@@ -201,7 +186,12 @@ func _update_target_material() -> void:
 			var sample_pos = hit_pos - hit_normal * 0.1
 			mat_id = _get_material_at(sample_pos)
 		
-		mat_name = MATERIAL_NAMES.get(mat_id, "Unknown (%d)" % mat_id)
+		if mat_id >= 100:
+			# Player placed material
+			var base_id = mat_id - 100
+			mat_name = "[P] " + MaterialRegistry.get_material_name(base_id)
+		else:
+			mat_name = MaterialRegistry.get_material_name(mat_id)
 	elif target and target.is_in_group("building_chunks"):
 		mat_name = "Building Block"
 	elif target and target.is_in_group("trees"):

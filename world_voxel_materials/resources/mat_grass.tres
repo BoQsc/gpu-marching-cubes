@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://world_voxel_materials/resources/voxel_material.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+id = 0
+display_name = "Grass"
+color = Color(0.2, 0.8, 0.1, 1)
+input_key = 49 # KEY_1

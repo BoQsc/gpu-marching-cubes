@@ -746,12 +746,12 @@ func do_tool_attack(item: Dictionary) -> void:
 		# Fallback if no behavior found (e.g. unknown tool)
 		if not behavior:
 			# Create a temporary default behavior using config values
-			behavior = TerrainToolBehavior.new()
+			behavior = VoxelBrush.new()
 			var config_radius = 1.0
 			if has_node("/root/PickaxeDigConfig"):
 				config_radius = get_node("/root/PickaxeDigConfig").mining_radius
 			behavior.radius = max(config_radius, 0.5)
-			behavior.shape_type = TerrainToolBehavior.ShapeType.SPHERE
+			behavior.shape_type = VoxelBrush.ShapeType.SPHERE
 		
 		# OVERRIDE: Apply config values to behavior (overrides preset .tres values)
 		if behavior and "pickaxe" in item_id and has_node("/root/PickaxeDigConfig"):
@@ -796,7 +796,10 @@ func do_tool_attack(item: Dictionary) -> void:
 					terrain_break_audio_player.play()
 				
 				# EXECUTE STRATEGY
-				behavior.apply(terrain_manager, position, hit_normal)
+				var modifier = TerrainModifier.new()
+				add_child(modifier)
+				modifier.apply_brush(behavior, position, hit_normal)
+				modifier.queue_free()
 				
 				terrain_damage.erase(block_pos)
 				_emit_durability_cleared()
@@ -804,13 +807,19 @@ func do_tool_attack(item: Dictionary) -> void:
 				if mat_id >= 0:
 					_collect_terrain_resource(mat_id)
 		else:
-			# INSTANT MODE
-			_emit_durability_hit(0, TERRAIN_HP, "Terrain", block_pos)
-			
+			# INSTANT MINE (No durability)
+			if terrain_hit_audio_player:
+				terrain_hit_audio_player.pitch_scale = randf_range(0.8, 1.2)
+				terrain_hit_audio_player.play()
+				
 			# EXECUTE STRATEGY
-			behavior.apply(terrain_manager, position, hit_normal)
+			var modifier = TerrainModifier.new()
+			add_child(modifier)
+			modifier.apply_brush(behavior, position, hit_normal)
+			modifier.queue_free()
 			
 			_emit_durability_cleared()
+			
 			if mat_id >= 0:
 				_collect_terrain_resource(mat_id)
 

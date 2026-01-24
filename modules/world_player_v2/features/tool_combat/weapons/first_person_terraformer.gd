@@ -1,8 +1,7 @@
 extends Node
 class_name FirstPersonShovelV2
 ## FirstPersonShovel - Handles grid-snapped terrain dig/fill with material selection
-## P to toggle dig/place mode, CTRL + 1-7 to select material
-## Dig mode (red) = remove blocks, Place mode (green) = add blocks
+## Refactored to use VoxelBrush and TerrainModifier
 
 # Material definitions (id matches gen_density.glsl material IDs)
 const MATERIALS = [
@@ -22,18 +21,17 @@ var dig_mode: bool = false   # false = Place mode (default), true = Dig mode
 
 # References
 var player: CharacterBody3D = null
-var terrain_manager: Node = null
+
+# Components
+var modifier: TerrainModifier
+var brush: VoxelBrush
 
 # Selection box visualization
 var selection_box: MeshInstance3D = null
-var current_dig_target: Vector3 = Vector3.ZERO    # Voxel-centered position to dig
-var current_place_target: Vector3 = Vector3.ZERO  # Voxel-centered position to place
 var has_target: bool = false
 
 # Constants
 const RAYCAST_DISTANCE: float = 10.0
-const BRUSH_SIZE: float = 0.5  # Radius for Box shape to capture single voxel
-const BRUSH_SHAPE: int = 1  # 1 = Box shape in modify_density.glsl
 
 # Colors
 const COLOR_DIG = Color(0.8, 0.2, 0.2, 0.5)   # Red for dig mode
@@ -45,7 +43,16 @@ func _ready() -> void:
 		push_error("FirstPersonShovel: Must be child of Player/Components node")
 		return
 	
-	call_deferred("_find_terrain_manager")
+	# Initialize Components
+	modifier = TerrainModifier.new()
+	add_child(modifier)
+	
+	brush = VoxelBrush.new()
+	brush.shape_type = VoxelBrush.ShapeType.BOX
+	brush.radius = 0.5
+	brush.strength = 10.0
+	brush.snap_to_grid = true
+	
 	call_deferred("_create_selection_box")
 	
 	# Connect to item changes
@@ -53,11 +60,6 @@ func _ready() -> void:
 		PlayerSignals.item_changed.connect(_on_item_changed)
 	
 	print("SHOVEL: Initialized, mode = %s, material = %s" % [_get_mode_name(), MATERIALS[material_index].name])
-
-func _find_terrain_manager() -> void:
-	terrain_manager = get_tree().get_first_node_in_group("terrain_manager")
-	if not terrain_manager:
-		push_warning("FirstPersonShovel: terrain_manager not found")
 
 func _create_selection_box() -> void:
 	selection_box = MeshInstance3D.new()
@@ -101,38 +103,6 @@ func _create_diamond_mesh() -> ArrayMesh:
 	
 	st.generate_normals()
 	return st.commit()
-
-# ============================================================================
-# UNIFIED TARGETING LOGIC - Using voxel-centered approach like combat_system
-# ============================================================================
-
-## Calculate dig target using integer grid coordinates
-func _get_dig_target(hit: Dictionary) -> Vector3:
-	# Round to nearest grid point
-	var nearest = Vector3(round(hit.position.x), round(hit.position.y), round(hit.position.z))
-	# The solid voxel is AT the hit point (no offset needed)
-	return nearest
-
-## Calculate place target using integer grid coordinates
-func _get_place_target(hit: Dictionary) -> Vector3:
-	# Simply round to the nearest grid point where camera is aimed
-	# This targets the empty space you're looking at
-	return Vector3(round(hit.position.x), round(hit.position.y), round(hit.position.z))
-
-## Get strongest normal direction (returns unit vector on primary axis)
-func _get_strongest_normal_direction(normal: Vector3) -> Vector3:
-	var abs_normal = Vector3(abs(normal.x), abs(normal.y), abs(normal.z))
-	var max_component = max(abs_normal.x, max(abs_normal.y, abs_normal.z))
-	
-	var dir = Vector3.ZERO
-	if abs_normal.x == max_component:
-		dir.x = sign(normal.x)
-	elif abs_normal.y == max_component:
-		dir.y = sign(normal.y)
-	else:
-		dir.z = sign(normal.z)
-	
-	return dir
 
 func _get_mode_name() -> String:
 	return "DIG" if dig_mode else "PLACE"
@@ -214,7 +184,7 @@ func _set_material(index: int) -> void:
 		PlayerSignals.terraformer_material_changed.emit(mat.name)
 
 # ============================================================================
-# TARGETING - Cursor shows voxel-centered position
+# TARGETING
 # ============================================================================
 
 func _update_targeting() -> void:
@@ -229,60 +199,57 @@ func _update_targeting() -> void:
 	
 	has_target = true
 	
-	# Calculate BOTH targets using unified voxel-centered logic
-	current_dig_target = _get_dig_target(hit)
-	current_place_target = _get_place_target(hit)
+	# Update brush config for targeting calculation
+	brush.mode = VoxelBrush.Mode.ADD if dig_mode else VoxelBrush.Mode.SUBTRACT
+	brush.use_raycast_normal = not dig_mode # Place uses normal offset
 	
-	# Show cursor at current mode's target
-	var display_target = current_dig_target if dig_mode else current_place_target
-	selection_box.global_position = display_target
+	# Get target from modifier helper
+	var target_pos = modifier.get_target_position(brush, hit.position, hit.normal)
+	
+	selection_box.global_position = target_pos
 	selection_box.visible = true
 
 # ============================================================================
-# ACTIONS - Use pre-calculated voxel-centered targets
+# ACTIONS
 # ============================================================================
 
 ## Call this from combat_system for left-click (primary action)
 func do_primary_action() -> void:
-	if not is_active or not terrain_manager or not has_target:
+	if not is_active or not has_target:
 		return
 	
-	# Emit animation signal for visual shovel
 	if has_node("/root/PlayerSignals"):
 		PlayerSignals.axe_fired.emit()
 	
-	if dig_mode:
-		_do_dig(current_dig_target)
-	else:
-		_do_place(current_place_target)
+	_apply_action(dig_mode)
 
 ## Call this from combat_system for right-click (secondary = opposite action)
 func do_secondary_action() -> void:
-	if not is_active or not terrain_manager or not has_target:
+	if not is_active or not has_target:
 		return
 	
-	# Emit animation signal
 	if has_node("/root/PlayerSignals"):
 		PlayerSignals.axe_fired.emit()
 	
-	# Opposite of current mode
-	if dig_mode:
-		_do_place(current_place_target)
+	_apply_action(not dig_mode)
+
+func _apply_action(is_dig: bool) -> void:
+	# Configure brush
+	brush.mode = VoxelBrush.Mode.ADD if is_dig else VoxelBrush.Mode.SUBTRACT
+	brush.use_raycast_normal = not is_dig
+	
+	if not is_dig:
+		# Place mode: set material (+100 for player placed)
+		brush.material_id = MATERIALS[material_index].id + 100
 	else:
-		_do_dig(current_dig_target)
-
-## Perform dig at voxel-centered position
-func _do_dig(target: Vector3) -> void:
-	# DIG: Positive density = Air (+10.0 for instant removal)
-	terrain_manager.modify_terrain(target, BRUSH_SIZE, 10.0, BRUSH_SHAPE, 0, -1)
-	print("SHOVEL: DIG at %s" % target)
-
-## Perform place at voxel-centered position
-func _do_place(target: Vector3) -> void:
-	# PLACE: Negative density = Solid (-10.0 for instant fill)
-	var mat_id = MATERIALS[material_index].id + 100
-	terrain_manager.modify_terrain(target, BRUSH_SIZE, -10.0, BRUSH_SHAPE, 0, mat_id)
-	print("SHOVEL: PLACE at %s (material=%s)" % [target, MATERIALS[material_index].name])
+		brush.material_id = -1
+	
+	# Re-raycast to get fresh hit normal for application
+	var hit = _raycast(RAYCAST_DISTANCE)
+	if not hit.is_empty():
+		modifier.apply_brush(brush, hit.position, hit.normal)
+		var action = "DIG" if is_dig else "PLACE"
+		print("SHOVEL: %s at %s" % [action, selection_box.global_position])
 
 # ============================================================================
 # RAYCAST

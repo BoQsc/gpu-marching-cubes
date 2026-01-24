@@ -1,10 +1,10 @@
 extends Node
 
-# Active tool assignment map: item_id (String) -> Resource (TerrainToolBehavior)
+# Active tool assignment map: item_id (String) -> Resource (VoxelBrush)
 var _tool_assignments: Dictionary = {}
 
 # Default resources (loaded on demand)
-const PRESET_PATH = "res://modules/world_player_v2/features/tool_combat/presets/"
+const PRESET_PATH = "res://world_voxel_brush/resources/presets/"
 
 func _ready() -> void:
     # Ensure presets folder exists (conceptually)
@@ -29,10 +29,10 @@ func _load_defaults() -> void:
     if terra_dig: register_tool("shovel_primary", terra_dig)
     if terra_place: register_tool("shovel_secondary", terra_place)
 
-func register_tool(item_id: String, active_behavior: TerrainToolBehavior) -> void:
+func register_tool(item_id: String, active_behavior: VoxelBrush) -> void:
     _tool_assignments[item_id] = active_behavior
 
-func get_tool_behavior(item_id: String) -> TerrainToolBehavior:
+func get_tool_behavior(item_id: String) -> VoxelBrush:
     # Check flexible matches (e.g., "pickaxe_iron" matches "pickaxe")
     for key in _tool_assignments:
         if key in item_id:

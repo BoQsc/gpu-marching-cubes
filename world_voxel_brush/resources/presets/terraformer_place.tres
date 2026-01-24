@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="TerrainToolBehavior" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="VoxelBrush" load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://modules/world_player_v2/features/tool_combat/terrain_tool_behavior.gd" id="1_script"]
+[ext_resource type="Script" path="res://modules/world_player_v2/features/tool_terrain/voxel_brush.gd" id="1_script"]
 
 [resource]
 script = ExtResource("1_script")

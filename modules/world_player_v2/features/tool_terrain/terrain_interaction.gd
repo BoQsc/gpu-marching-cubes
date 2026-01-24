@@ -12,6 +12,9 @@ var terrain_manager: Node = null
 var vegetation_manager: Node = null
 var hotbar: Node = null
 
+# Components
+var modifier: TerrainModifier
+
 # Selection box for RESOURCE/BUCKET placement
 var selection_box: MeshInstance3D = null
 var current_target_pos: Vector3 = Vector3.ZERO
@@ -44,6 +47,10 @@ func _ready() -> void:
 	signals = get_node_or_null("../signals")
 	if not signals:
 		signals = get_node_or_null("signals")
+	
+	# Initialize Components
+	modifier = TerrainModifier.new()
+	add_child(modifier)
 	
 	# Auto-discover player and managers
 	player = get_parent().get_parent()  # Modes/TerrainInteraction -> WorldPlayerV2
@@ -142,12 +149,17 @@ func _update_terrain_targeting() -> void:
 	
 	has_target = true
 	
-	# Calculate adjacent voxel position (where block will be placed)
-	var pos = hit.position + hit.normal * 0.1
-	current_target_pos = Vector3(floor(pos.x), floor(pos.y), floor(pos.z))
+	# Configure temporary brush for targeting calculation (Place mode default)
+	var temp_brush = VoxelBrush.new()
+	temp_brush.snap_to_grid = true
+	temp_brush.use_raycast_normal = true
+	
+	# Calculate target position using modifier helper
+	var target_pos = modifier.get_target_position(temp_brush, hit.position, hit.normal)
+	current_target_pos = target_pos
 	
 	# Update selection box position
-	selection_box.global_position = current_target_pos + Vector3(0.5, 0.5, 0.5)
+	selection_box.global_position = target_pos
 	selection_box.visible = true
 
 func _update_target_material() -> void:
@@ -207,35 +219,41 @@ func _update_target_material() -> void:
 
 ## Collect water with bucket
 func do_bucket_collect() -> void:
-	if not player or not terrain_manager:
-		return
+	if not player or not terrain_manager: return
 	
-	if not has_target:
-		return
+	var brush = VoxelBrush.new()
+	brush.shape_type = VoxelBrush.ShapeType.BOX
+	brush.radius = 0.6
+	brush.strength = 0.5
+	brush.mode = VoxelBrush.Mode.ADD # +Density = Air (Remove water)
+	brush.target_layer = 1 # Water layer
+	brush.snap_to_grid = true
+	brush.use_raycast_normal = false # Collect AT the water voxel
 	
-	var center = current_target_pos + Vector3(0.5, 0.5, 0.5)
-	terrain_manager.modify_terrain(center, 0.6, 0.5, 1, 1)  # Same as placement but positive value
-	DebugManager.log_player("TerrainInteraction: Collected water at %s" % current_target_pos)
+	var hit = _raycast(5.0)
+	if not hit.is_empty():
+		modifier.apply_brush(brush, hit.position, hit.normal)
+		DebugManager.log_player("TerrainInteraction: Collected water")
 
 ## Place water from bucket
 func do_bucket_place() -> void:
-	if not player or not terrain_manager:
-		return
+	if not player or not terrain_manager: return
 	
-	if has_target:
-		var center = current_target_pos + Vector3(0.5, 0.5, 0.5)
-		terrain_manager.modify_terrain(center, 0.6, -0.5, 1, 1)  # Box shape, fill, water layer
+	var brush = VoxelBrush.new()
+	brush.shape_type = VoxelBrush.ShapeType.BOX
+	brush.radius = 0.6
+	brush.strength = 0.5
+	brush.mode = VoxelBrush.Mode.SUBTRACT # -Density = Water (Place water)
+	brush.target_layer = 1 # Water layer
+	brush.snap_to_grid = true
+	brush.use_raycast_normal = true # Place ADJACENT
+	
+	var hit = _raycast(5.0)
+	if not hit.is_empty():
+		modifier.apply_brush(brush, hit.position, hit.normal)
 		if has_node("/root/PlayerSignals"):
 			PlayerSignals.bucket_placed.emit()
-		DebugManager.log_player("TerrainInteraction: Placed water at %s" % current_target_pos)
-	else:
-		var hit = _raycast(5.0)
-		if hit.is_empty():
-			return
-		var pos = hit.position + hit.normal * 0.5
-		terrain_manager.modify_terrain(pos, 0.6, -0.5, 1, 1)
-		if has_node("/root/PlayerSignals"):
-			PlayerSignals.bucket_placed.emit()
+		DebugManager.log_player("TerrainInteraction: Placed water")
 
 # ============================================================================
 # RESOURCE PLACEMENT
@@ -265,21 +283,23 @@ func do_resource_place(item: Dictionary) -> void:
 	if mat_id < 100:
 		mat_id += 100
 	
-	if has_target:
-		var center = current_target_pos + Vector3(0.5, 0.5, 0.5)
-		terrain_manager.modify_terrain(center, 0.6, -0.5, 1, 0, mat_id)
+	var brush = VoxelBrush.new()
+	brush.shape_type = VoxelBrush.ShapeType.BOX
+	brush.radius = 0.6
+	brush.strength = 0.5
+	brush.mode = VoxelBrush.Mode.SUBTRACT
+	brush.material_id = mat_id
+	brush.target_layer = 0
+	brush.snap_to_grid = true
+	brush.use_raycast_normal = true
+	
+	var hit = _raycast(5.0)
+	if not hit.is_empty():
+		modifier.apply_brush(brush, hit.position, hit.normal)
 		_consume_selected_item()
 		if has_node("/root/PlayerSignals"):
 			PlayerSignals.resource_placed.emit()
-		DebugManager.log_player("TerrainInteraction: Placed %s (mat:%d) at %s" % [item.get("name", "resource"), mat_id, current_target_pos])
-	else:
-		var hit = _raycast(5.0)
-		if hit.is_empty():
-			return
-		var p = hit.position + hit.normal * 0.1
-		var target_pos = Vector3(floor(p.x), floor(p.y), floor(p.z)) + Vector3(0.5, 0.5, 0.5)
-		terrain_manager.modify_terrain(target_pos, 0.6, -0.5, 1, 0, mat_id)
-		_consume_selected_item()
+		DebugManager.log_player("TerrainInteraction: Placed %s (mat:%d)" % [item.get("name", "resource"), mat_id])
 
 ## Place vegetation (grass or rock) at raycast hit position - V1 EXACT
 func _do_vegetation_place(veg_type: String) -> void:

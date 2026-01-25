@@ -1409,7 +1409,17 @@ func _do_terrain_punch(item: Dictionary, position: Vector3) -> void:
 			mat_id = terrain_manager.get_material_at(sample_pos)
 		
 		var center = Vector3(terrain_pos) + Vector3(0.5, 0.5, 0.5)
-		terrain_manager.modify_terrain(center, 0.6, 1.0, 1, 0, -1)
+		
+		# Voxel Brush Integration: Use standard brush even for punches
+		var brush = VoxelBrush.new()
+		brush.shape_type = VoxelBrush.ShapeType.BOX
+		brush.radius = 0.6
+		brush.strength = 1.0
+		brush.mode = VoxelBrush.Mode.ADD # Dig
+		brush.snap_to_grid = true
+		
+		# Apply via modifier (respects runtime overrides if we added that logic)
+		terrain_modifier.apply_brush(brush, center, Vector3.UP)
 		
 		if mat_id >= 0:
 			_collect_terrain_resource(mat_id)

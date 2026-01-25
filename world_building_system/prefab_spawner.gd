@@ -26,6 +26,8 @@ var spawned_positions: Dictionary = {}
 # Track spawned doors for distance-based cleanup
 var spawned_doors: Dictionary = {} # "x_z" -> door instance
 
+var terrain_modifier: Node = null
+
 # Preload the interactive door scene
 const DOOR_SCENE = preload("res://models/objects/interactive_door/interactive_door.tscn")
 
@@ -108,6 +110,14 @@ func _ready():
 			road_spacing = terrain_manager.procedural_road_spacing
 		if "procedural_road_width" in terrain_manager:
 			road_width = terrain_manager.procedural_road_width
+			
+	# Initialize Terrain Modifier (Persistent)
+	if not terrain_modifier:
+		var modifier_script = load("res://world_voxel_brush/components/terrain_modifier.gd")
+		if modifier_script:
+			terrain_modifier = modifier_script.new()
+			terrain_modifier.name = "TerrainModifierPrefab"
+			add_child(terrain_modifier)
 
 func _process(_delta):
 	_cleanup_distant_doors()
@@ -491,9 +501,15 @@ func spawn_user_prefab(prefab_name: String, world_pos: Vector3, submerge_offset:
 			
 			# If this block is at or below terrain surface, carve it out
 			if pos.y <= world_pos.y:
-				if terrain_manager and terrain_manager.has_method("modify_terrain"):
-					# Dig a small box at this position (shape 1 = box, value > 0 = dig)
-					terrain_manager.modify_terrain(pos + Vector3(0.5, 0.5, 0.5), 0.6, 1.0, 1, 0)
+				if terrain_modifier:
+					var brush = VoxelBrush.new()
+					brush.shape_type = VoxelBrush.ShapeType.BOX
+					brush.radius = 0.6
+					brush.mode = VoxelBrush.Mode.ADD # Dig
+					brush.strength = 1.0
+					brush.snap_to_grid = true
+					
+					terrain_modifier.apply_brush(brush, pos + Vector3(0.5, 0.5, 0.5), Vector3.UP)
 	
 	# Interior carve: carve only at interior positions (where there are gaps in Y levels)
 	# Walls have blocks at many consecutive Y levels, interior floors have gaps
@@ -545,7 +561,15 @@ func spawn_user_prefab(prefab_name: String, world_pos: Vector3, submerge_offset:
 				var y = int(pos.y)
 				while y <= int(terrain_y):
 					var carve_pos = Vector3(pos.x + 0.5, float(y) + 0.5, pos.z + 0.5)
-					terrain_manager.modify_terrain(carve_pos, 0.6, 1.0, 1, 0) # Box shape, dig
+					if terrain_modifier:
+						var brush = VoxelBrush.new()
+						brush.shape_type = VoxelBrush.ShapeType.BOX
+						brush.radius = 0.6
+						brush.mode = VoxelBrush.Mode.ADD # Dig
+						brush.strength = 1.0
+						brush.snap_to_grid = true
+						terrain_modifier.apply_brush(brush, carve_pos, Vector3.UP)
+					
 					carve_count += 1
 					y += 1
 		
@@ -692,8 +716,16 @@ func _fill_foundation_terrain(blocks: Array, spawn_pos: Vector3, rotation: int):
 			var current_y = terrain_y + 0.5 # Start half a block above terrain
 			while current_y < target_y:
 				var fill_pos = Vector3(block_world_pos.x + 0.5, current_y, block_world_pos.z + 0.5)
-				# Strong fill: shape 1 = box, value -2.0 = aggressive terrain add
-				terrain_manager.modify_terrain(fill_pos, 0.6, -2.0, 1, 0) # Box shape, STRONG fill
+				
+				if terrain_modifier:
+					var brush = VoxelBrush.new()
+					brush.shape_type = VoxelBrush.ShapeType.BOX
+					brush.radius = 0.6
+					brush.mode = VoxelBrush.Mode.SUBTRACT # Place/Fill
+					brush.strength = 1.0 # 2.0 legacy -> 1.0 standard
+					brush.snap_to_grid = true
+					terrain_modifier.apply_brush(brush, fill_pos, Vector3.UP)
+				
 				current_y += 0.8 # Move up slightly less than 1 for overlap
 				fill_count += 1
 	

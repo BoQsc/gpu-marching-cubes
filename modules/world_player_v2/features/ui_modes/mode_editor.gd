@@ -24,6 +24,8 @@ var brush_size: float = 4.0
 var brush_shape: int = 0 # 0=Sphere, 1=Box
 var blocky_mode: bool = true
 
+var terrain_modifier: Node = null
+
 # Fly mode state
 var fly_speed: float = 15.0
 
@@ -55,8 +57,17 @@ func _ready() -> void:
 	
 	# Find prefab spawner
 	prefab_spawner = get_tree().get_first_node_in_group("prefab_spawner")
+	# Find shrubber
 	if not prefab_spawner:
 		prefab_spawner = get_tree().root.find_child("PrefabSpawner", true, false)
+	
+	# Initialize Terrain Modifier (Persistent)
+	if not terrain_modifier:
+		var modifier_script = load("res://world_voxel_brush/components/terrain_modifier.gd")
+		if modifier_script:
+			terrain_modifier = modifier_script.new()
+			terrain_modifier.name = "TerrainModifierEditor"
+			add_child(terrain_modifier)
 	
 	# Load available prefabs
 	_load_prefabs()
@@ -183,15 +194,23 @@ func _do_terrain_dig() -> void:
 		return
 	
 	var position = hit.get("position", Vector3.ZERO)
-	var shape = brush_shape
-	var size = brush_size if not blocky_mode else 0.6
-	
+	# Voxel Brush Integration
+	var brush = VoxelBrush.new()
 	if blocky_mode:
-		position = position - hit.get("normal", Vector3.ZERO) * 0.1
-		position = Vector3(floor(position.x) + 0.5, floor(position.y) + 0.5, floor(position.z) + 0.5)
-		shape = 1
+		brush.shape_type = VoxelBrush.ShapeType.BOX
+		brush.radius = 0.6
+		brush.snap_to_grid = true
+		brush.use_raycast_normal = false # Dig IN to the block
+	else:
+		brush.shape_type = brush_shape
+		brush.radius = brush_size
+		brush.snap_to_grid = false
+		
+	brush.mode = VoxelBrush.Mode.ADD # Dig
+	brush.strength = 1.0 # Instant dig for editor
 	
-	terrain_manager.modify_terrain(position, size, 1.0, shape, 0)
+	if terrain_modifier:
+		terrain_modifier.apply_brush(brush, position, hit.get("normal", Vector3.UP))
 
 func _do_terrain_place() -> void:
 	if not player or not terrain_manager:
@@ -202,15 +221,23 @@ func _do_terrain_place() -> void:
 		return
 	
 	var position = hit.get("position", Vector3.ZERO)
-	var shape = brush_shape
-	var size = brush_size if not blocky_mode else 0.6
-	
+	# Voxel Brush Integration
+	var brush = VoxelBrush.new()
 	if blocky_mode:
-		position = position + hit.get("normal", Vector3.ZERO) * 0.1
-		position = Vector3(floor(position.x) + 0.5, floor(position.y) + 0.5, floor(position.z) + 0.5)
-		shape = 1
+		brush.shape_type = VoxelBrush.ShapeType.BOX
+		brush.radius = 0.6
+		brush.snap_to_grid = true
+		brush.use_raycast_normal = true # Place OUT from the block
+	else:
+		brush.shape_type = brush_shape
+		brush.radius = brush_size
+		brush.snap_to_grid = false
+		
+	brush.mode = VoxelBrush.Mode.SUBTRACT # Place
+	brush.strength = 1.0 # Instant place
 	
-	terrain_manager.modify_terrain(position, size, -1.0, shape, 0)
+	if terrain_modifier:
+		terrain_modifier.apply_brush(brush, position, hit.get("normal", Vector3.UP))
 
 func _do_water_remove() -> void:
 	if not player or not terrain_manager:
@@ -221,7 +248,16 @@ func _do_water_remove() -> void:
 		return
 	
 	var position = hit.get("position", Vector3.ZERO)
-	terrain_manager.modify_terrain(position, brush_size, 1.0, 0, 1)
+	
+	var brush = VoxelBrush.new()
+	brush.radius = brush_size
+	brush.mode = VoxelBrush.Mode.ADD # Remove water
+	brush.strength = 1.0
+	brush.shape_type = VoxelBrush.ShapeType.SPHERE
+	brush.target_layer = 1 # WATER layer
+	
+	if terrain_modifier:
+		terrain_modifier.apply_brush(brush, position, Vector3.UP)
 
 func _do_water_add() -> void:
 	if not player or not terrain_manager:
@@ -232,7 +268,16 @@ func _do_water_add() -> void:
 		return
 	
 	var position = hit.get("position", Vector3.ZERO)
-	terrain_manager.modify_terrain(position, brush_size, -1.0, 0, 1)
+	
+	var brush = VoxelBrush.new()
+	brush.radius = brush_size
+	brush.mode = VoxelBrush.Mode.SUBTRACT # Add water
+	brush.strength = 1.0
+	brush.shape_type = VoxelBrush.ShapeType.SPHERE
+	brush.target_layer = 1 # WATER layer
+	
+	if terrain_modifier:
+		terrain_modifier.apply_brush(brush, position, Vector3.UP)
 
 func _do_road_click() -> void:
 	if not player or not road_manager:
@@ -325,10 +370,17 @@ func _do_legacy_dirt_dig() -> void:
 		return
 	
 	var position = hit.get("position", Vector3.ZERO)
-	position = position - hit.get("normal", Vector3.ZERO) * 0.1
-	position = Vector3(floor(position.x) + 0.5, floor(position.y) + 0.5, floor(position.z) + 0.5)
 	
-	terrain_manager.modify_terrain(position, 0.6, 0.5, 1, 0)
+	var brush = VoxelBrush.new()
+	brush.shape_type = VoxelBrush.ShapeType.BOX
+	brush.radius = 0.6
+	brush.mode = VoxelBrush.Mode.ADD
+	brush.strength = 1.0 # 0.5 was legacy, 1.0 ensures full dig
+	brush.snap_to_grid = true
+	brush.use_raycast_normal = false
+	
+	if terrain_modifier:
+		terrain_modifier.apply_brush(brush, position, hit.get("normal", Vector3.UP))
 
 func _do_legacy_dirt_place() -> void:
 	if not player or not terrain_manager:
@@ -339,7 +391,14 @@ func _do_legacy_dirt_place() -> void:
 		return
 	
 	var position = hit.get("position", Vector3.ZERO)
-	position = position + hit.get("normal", Vector3.ZERO) * 0.1
-	position = Vector3(floor(position.x) + 0.5, floor(position.y) + 0.5, floor(position.z) + 0.5)
 	
-	terrain_manager.modify_terrain(position, 0.6, -0.5, 1, 0)
+	var brush = VoxelBrush.new()
+	brush.shape_type = VoxelBrush.ShapeType.BOX
+	brush.radius = 0.6
+	brush.mode = VoxelBrush.Mode.SUBTRACT
+	brush.strength = 1.0
+	brush.snap_to_grid = true
+	brush.use_raycast_normal = true
+	
+	if terrain_modifier:
+		terrain_modifier.apply_brush(brush, position, hit.get("normal", Vector3.UP))

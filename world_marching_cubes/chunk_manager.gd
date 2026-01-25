@@ -637,12 +637,19 @@ func modify_terrain(pos: Vector3, radius: float, value: float, shape: int = 0, l
 	var min_pos = pos - Vector3(radius + extra_margin, radius + extra_margin, radius + extra_margin)
 	var max_pos = pos + Vector3(radius + extra_margin, radius + extra_margin, radius + extra_margin)
 	
-	var min_chunk_x = int(floor(min_pos.x / CHUNK_STRIDE))
-	var max_chunk_x = int(floor(max_pos.x / CHUNK_STRIDE))
-	var min_chunk_y = int(floor(min_pos.y / CHUNK_STRIDE))
-	var max_chunk_y = int(floor(max_pos.y / CHUNK_STRIDE))
-	var min_chunk_z = int(floor(min_pos.z / CHUNK_STRIDE))
-	var max_chunk_z = int(floor(max_pos.z / CHUNK_STRIDE))
+	# OVERLAP FIX: Subtract 2.0 (overlap size) from min calculation to ensure we catch 
+	# the "previous" chunk if we are modifying near its upper border.
+	# Example: brush at 31.0 affects Chunk 0 (0..32) and Chunk 1 (31..63).
+	# Previously min=31 -> index 1. Missed Chunk 0.
+	# Now min=29 -> index 0. Catches Chunk 0.
+	var overlap_buffer = 2.0 
+	
+	var min_chunk_x = int(floor((min_pos.x - overlap_buffer) / CHUNK_STRIDE))
+	var max_chunk_x = int(floor((max_pos.x + overlap_buffer) / CHUNK_STRIDE))
+	var min_chunk_y = int(floor((min_pos.y - overlap_buffer) / CHUNK_STRIDE))
+	var max_chunk_y = int(floor((max_pos.y + overlap_buffer) / CHUNK_STRIDE))
+	var min_chunk_z = int(floor((min_pos.z - overlap_buffer) / CHUNK_STRIDE))
+	var max_chunk_z = int(floor((max_pos.z + overlap_buffer) / CHUNK_STRIDE))
 	
 	var tasks_to_add = []
 	var chunks_to_generate = [] # Track unloaded chunks that need immediate loading
@@ -728,8 +735,8 @@ func fill_column(x: float, z: float, y_from: float, y_to: float, value: float, l
 	# Calculate center position (mid-point of column)
 	var pos = Vector3(x, (y_from + y_to) / 2.0, z)
 	
-	# Add margin for Marching Cubes boundary overlap (1.0 is sufficient)
-	var margin = 1.0
+	# OVERLAP FIX: Use overlap buffer to catch adjacent chunks
+	var margin = 2.0 # Increased from 1.0 to 2.0 to match modify_terrain fix
 	var min_chunk_x = int(floor((x - margin) / CHUNK_STRIDE))
 	var max_chunk_x = int(floor((x + margin) / CHUNK_STRIDE))
 	var min_chunk_y = int(floor(y_from / CHUNK_STRIDE))

@@ -614,3 +614,178 @@ func get_terrain_height(global_x: float, global_z: float) -> float:
 ## Check if any Y layer at this X,Z has stored modifications (player-built terrain)
 func has_modifications_at_xz(x: int, z: int) -> bool:
 	return chunk_loader.has_modifications_at_xz(x, z)
+
+# ============================================================================
+# TERRAIN MODIFICATION API
+# ============================================================================
+
+# Updated to accept layer (0=Terrain, 1=Water) and optional material_id
+# Rate limiting to prevent GPU overload from rapid-fire calls
+var _last_modify_time_ms: int = 0
+const MODIFY_COOLDOWN_MS: int = 100  # Max 10 modifications per second
+
+func modify_terrain(pos: Vector3, radius: float, value: float, shape: int = 0, layer: int = 0, material_id: int = -1):
+	# RATE LIMITING: Skip if called too quickly (prevents 60 GPU ops/sec when holding mouse)
+	var now_ms = Time.get_ticks_msec()
+	if now_ms - _last_modify_time_ms < MODIFY_COOLDOWN_MS:
+		return  # Skip this call, too soon after last one
+	_last_modify_time_ms = now_ms
+	
+	# Calculate bounds of the modification sphere/box
+	# Add extra margin (1.0) to account for material radius extension and shader sampling
+	var extra_margin = 1.0 if material_id >= 0 else 0.0
+	var min_pos = pos - Vector3(radius + extra_margin, radius + extra_margin, radius + extra_margin)
+	var max_pos = pos + Vector3(radius + extra_margin, radius + extra_margin, radius + extra_margin)
+	
+	var min_chunk_x = int(floor(min_pos.x / CHUNK_STRIDE))
+	var max_chunk_x = int(floor(max_pos.x / CHUNK_STRIDE))
+	var min_chunk_y = int(floor(min_pos.y / CHUNK_STRIDE))
+	var max_chunk_y = int(floor(max_pos.y / CHUNK_STRIDE))
+	var min_chunk_z = int(floor(min_pos.z / CHUNK_STRIDE))
+	var max_chunk_z = int(floor(max_pos.z / CHUNK_STRIDE))
+	
+	var tasks_to_add = []
+	var chunks_to_generate = [] # Track unloaded chunks that need immediate loading
+	
+	# Store modification for persistence (all affected chunks)
+	for x in range(min_chunk_x, max_chunk_x + 1):
+		for y in range(min_chunk_y, max_chunk_y + 1):
+			for z in range(min_chunk_z, max_chunk_z + 1):
+				var coord = Vector3i(x, y, z)
+				
+				# Store the modification for this chunk (persists across unloads)
+				if not stored_modifications.has(coord):
+					stored_modifications[coord] = []
+				stored_modifications[coord].append({
+					"brush_pos": pos,
+					"radius": radius,
+					"value": value,
+					"shape": shape,
+					"layer": layer,
+					"material_id": material_id
+				})
+				
+				# Only dispatch GPU task if chunk is currently loaded
+				if active_chunks.has(coord):
+					var data = active_chunks[coord]
+					if data != null:
+						var target_buffer = data.density_buffer_terrain if layer == 0 else data.density_buffer_water
+						
+						if target_buffer.is_valid():
+							var chunk_pos = Vector3(coord.x * CHUNK_STRIDE, coord.y * CHUNK_STRIDE, coord.z * CHUNK_STRIDE)
+							
+							# Increment chunk's modification version and capture for stale detection
+							data.mod_version += 1
+							var start_mod_version = data.mod_version
+							
+							var task = {
+								"type": "modify",
+								"coord": coord,
+								"rid": target_buffer,
+								"material_rid": data.material_buffer_terrain, # Pass material buffer
+								"pos": chunk_pos,
+								"brush_pos": pos,
+								"radius": radius,
+								"value": value,
+								"shape": shape,
+								"layer": layer,
+								"material_id": material_id,
+								"start_mod_version": start_mod_version  # For stale detection
+							}
+							tasks_to_add.append(task)
+				else:
+					# Chunk not loaded - trigger immediate generation
+					if not active_chunks.has(coord): # Not already queued
+						active_chunks[coord] = null # Mark as pending
+						var chunk_pos = Vector3(coord.x * CHUNK_STRIDE, coord.y * CHUNK_STRIDE, coord.z * CHUNK_STRIDE)
+						if DebugManager.LOG_CHUNK: DebugManager.log_chunk("modify_terrain triggering Y=%d at (%d, %d)" % [coord.y, coord.x, coord.z])
+						chunks_to_generate.append({
+							"type": "generate",
+							"coord": coord,
+							"pos": chunk_pos
+						})
+	
+	# Queue chunk generations with high priority
+	if chunks_to_generate.size() > 0:
+		for gen_task in chunks_to_generate:
+			voxel_engine.queue_generation(gen_task.coord, gen_task.pos)
+	
+	if tasks_to_add.size() > 0:
+		modification_batch_id += 1
+		var batch_count = tasks_to_add.size()
+		
+		# PRIORITY: Insert modifications at FRONT of queue
+		# Reverse order to maintain sequence when pushing to front
+		for i in range(tasks_to_add.size() - 1, -1, -1):
+			var t = tasks_to_add[i]
+			t["batch_id"] = modification_batch_id
+			t["batch_count"] = batch_count
+			voxel_engine.queue_modification(t)
+
+## Fill a 1x1 vertical column of terrain from y_from to y_to
+## Uses Column shape (type=2) for precise vertical fills
+func fill_column(x: float, z: float, y_from: float, y_to: float, value: float, layer: int = 0):
+	# Calculate center position (mid-point of column)
+	var pos = Vector3(x, (y_from + y_to) / 2.0, z)
+	
+	# Add margin for Marching Cubes boundary overlap (1.0 is sufficient)
+	var margin = 1.0
+	var min_chunk_x = int(floor((x - margin) / CHUNK_STRIDE))
+	var max_chunk_x = int(floor((x + margin) / CHUNK_STRIDE))
+	var min_chunk_y = int(floor(y_from / CHUNK_STRIDE))
+	var max_chunk_y = int(floor(y_to / CHUNK_STRIDE))
+	var min_chunk_z = int(floor((z - margin) / CHUNK_STRIDE))
+	var max_chunk_z = int(floor((z + margin) / CHUNK_STRIDE))
+	
+	var tasks_to_add = []
+	
+	for chunk_x in range(min_chunk_x, max_chunk_x + 1):
+		for chunk_y in range(min_chunk_y, max_chunk_y + 1):
+			for chunk_z in range(min_chunk_z, max_chunk_z + 1):
+				var coord = Vector3i(chunk_x, chunk_y, chunk_z)
+				
+				# Store modification for persistence
+				if not stored_modifications.has(coord):
+					stored_modifications[coord] = []
+				stored_modifications[coord].append({
+					"brush_pos": pos,
+					"radius": 0.6,
+					"value": value,
+					"shape": 2, # Column shape
+					"layer": layer,
+					"y_min": y_from,
+					"y_max": y_to,
+					"material_id": - 1
+				})
+				
+				if active_chunks.has(coord):
+					var data = active_chunks[coord]
+					if data != null:
+						var target_buffer = data.density_buffer_terrain if layer == 0 else data.density_buffer_water
+						if target_buffer.is_valid():
+							var chunk_pos = Vector3(coord.x * CHUNK_STRIDE, coord.y * CHUNK_STRIDE, coord.z * CHUNK_STRIDE)
+							tasks_to_add.append({
+								"type": "modify",
+								"coord": coord,
+								"rid": target_buffer,
+								"material_rid": data.material_buffer_terrain,
+								"pos": chunk_pos,
+								"brush_pos": pos,
+								"radius": 0.6,
+								"value": value,
+								"shape": 2, # Column shape
+								"layer": layer,
+								"y_min": y_from,
+								"y_max": y_to,
+								"material_id": - 1
+							})
+	
+	if tasks_to_add.size() > 0:
+		modification_batch_id += 1
+		var batch_count = tasks_to_add.size()
+		
+		for i in range(tasks_to_add.size() - 1, -1, -1):
+			var t = tasks_to_add[i]
+			t["batch_id"] = modification_batch_id
+			t["batch_count"] = batch_count
+			voxel_engine.queue_modification(t)

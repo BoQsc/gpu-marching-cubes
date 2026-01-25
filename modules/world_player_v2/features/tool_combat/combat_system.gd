@@ -649,6 +649,7 @@ func do_punch(item: Dictionary) -> void:
 	var damage = item.get("damage", 1)
 	var target = hit.get("collider")
 	var position = hit.get("position", Vector3.ZERO)
+	var normal = hit.get("normal", Vector3.UP)
 	
 	# Try to damage entity
 	var damageable = _find_damageable(target)
@@ -671,7 +672,7 @@ func do_punch(item: Dictionary) -> void:
 		return
 	
 	# Default: terrain with durability
-	_do_terrain_punch(item, position)
+	_do_terrain_punch(item, position, normal)
 
 ## Tool attack/mine
 func do_tool_attack(item: Dictionary) -> void:
@@ -754,9 +755,17 @@ func do_tool_attack(item: Dictionary) -> void:
 		if "pickaxe" in item_id and has_node("/root/PickaxeDurabilityConfig"):
 			use_durability = get_node("/root/PickaxeDurabilityConfig").enabled
 			
-		var snapped_pos = position - hit_normal * 0.1
-		snapped_pos = Vector3(floor(snapped_pos.x) + 0.5, floor(snapped_pos.y) + 0.5, floor(snapped_pos.z) + 0.5)
-		var block_pos = Vector3i(floor(snapped_pos.x), floor(snapped_pos.y), floor(snapped_pos.z))
+		# Voxel Brush Integration for targeting logic
+		var brush = _get_mining_brush(item_id)
+		
+		# Temp brush for targeting: Must behave like DIG mode (Add) but we don't care about mode, just shape/radius/snap
+		brush.use_raycast_normal = false # Mining always digs IN
+		
+		var target_pos = position
+		if terrain_modifier:
+			target_pos = terrain_modifier.get_target_position(brush, position, hit_normal)
+			
+		var block_pos = Vector3i(floor(target_pos.x), floor(target_pos.y), floor(target_pos.z))
 		
 		if use_durability:
 			if not terrain_damage.has(block_pos):
@@ -1005,9 +1014,10 @@ func do_pistol_fire() -> void:
 	if target and target.is_in_group("blocks") and target.has_method("take_damage"):
 		target.take_damage(2)
 
-## Unified Terrain Mining Helper (Uses VoxelBrush system)
-func _execute_terrain_mine(position: Vector3, hit_normal: Vector3, item_id: String, mining_strength: float = 1.0) -> void:
-	if not terrain_manager or not tool_registry or not terrain_modifier:
+
+
+func _execute_terrain_mine(position: Vector3, hit_normal: Vector3, item_id: String, strength: float) -> void:
+	if not terrain_modifier:
 		return
 
 	# Runtime Override (Brush Editor)
@@ -1024,7 +1034,44 @@ func _execute_terrain_mine(position: Vector3, hit_normal: Vector3, item_id: Stri
 		terrain_modifier.apply_brush(override_behavior, position, hit_normal)
 		return
 
-	# Resolve behavior via Registry
+	# Resolve behavior via Helper
+	var behavior = _get_mining_brush(item_id)
+	
+	# Override strength from item
+	behavior.strength = strength
+	
+	# Ensure mode is ADD (Dig)
+	behavior.mode = VoxelBrush.Mode.ADD
+
+	# Apply using TerrainModifier
+	terrain_modifier.apply_brush(behavior, position, hit_normal)
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+func _raycast(distance: float, collide_with_areas: bool, exclude_water: bool) -> Dictionary:
+	if player and player.has_method("raycast"):
+		return player.raycast(distance, 0xFFFFFFFF, collide_with_areas, exclude_water)
+	return {}
+
+## Get material ID at hit position using mesh vertex colors (most accurate)
+## Falls back to voxel buffer lookup if mesh reading fails
+func _get_material_at_hit(target: Node, hit_pos: Vector3, hit_normal: Vector3) -> int:
+	# Try mesh-based detection first (accurate for small veins like ore)
+	var mat_id = _get_material_from_mesh(target, hit_pos)
+	
+	# Fallback to voxel buffer if mesh reading failed
+	if mat_id < 0 and terrain_manager and terrain_manager.has_method("get_material_at"):
+		# Sample INSIDE terrain, not at surface
+		var sample_pos = hit_pos - hit_normal * 0.3
+		mat_id = terrain_manager.get_material_at(sample_pos)
+	
+	return mat_id
+
+## Get material ID from mesh vertex color at hit point (100% accurate)
+## Finds the exact triangle containing the hit point and interpolates vertex colors
+func _get_mining_brush(item_id: String) -> VoxelBrush:
 	var behavior = null
 	
 	# Check global overrides for Pickaxe
@@ -1055,35 +1102,9 @@ func _execute_terrain_mine(position: Vector3, hit_normal: Vector3, item_id: Stri
 	if behavior and "pickaxe" in item_id and has_node("/root/PickaxeDigConfig"):
 		var config = get_node("/root/PickaxeDigConfig")
 		behavior.radius = max(config.mining_radius, 0.5)
-	
-	# Apply using TerrainModifier
-	terrain_modifier.apply_brush(behavior, position, hit_normal)
+		
+	return behavior
 
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-func _raycast(distance: float, collide_with_areas: bool, exclude_water: bool) -> Dictionary:
-	if player and player.has_method("raycast"):
-		return player.raycast(distance, 0xFFFFFFFF, collide_with_areas, exclude_water)
-	return {}
-
-## Get material ID at hit position using mesh vertex colors (most accurate)
-## Falls back to voxel buffer lookup if mesh reading fails
-func _get_material_at_hit(target: Node, hit_pos: Vector3, hit_normal: Vector3) -> int:
-	# Try mesh-based detection first (accurate for small veins like ore)
-	var mat_id = _get_material_from_mesh(target, hit_pos)
-	
-	# Fallback to voxel buffer if mesh reading failed
-	if mat_id < 0 and terrain_manager and terrain_manager.has_method("get_material_at"):
-		# Sample INSIDE terrain, not at surface
-		var sample_pos = hit_pos - hit_normal * 0.3
-		mat_id = terrain_manager.get_material_at(sample_pos)
-	
-	return mat_id
-
-## Get material ID from mesh vertex color at hit point (100% accurate)
-## Finds the exact triangle containing the hit point and interpolates vertex colors
 func _get_material_from_mesh(terrain_node: Node, hit_pos: Vector3) -> int:
 	# Find the MeshInstance3D child of the terrain node
 	var mesh_instance: MeshInstance3D = null
@@ -1378,18 +1399,30 @@ func _find_building_chunk(collider: Node) -> Node:
 	
 	return null
 
-func _do_terrain_punch(item: Dictionary, position: Vector3) -> void:
+func _do_terrain_punch(item: Dictionary, position: Vector3, hit_normal: Vector3 = Vector3.UP) -> void:
 	if not terrain_manager or not terrain_manager.has_method("modify_terrain"):
 		return
 	
 	var punch_dmg = item.get("damage", 1)
-	var terrain_pos = Vector3i(floor(position.x), floor(position.y), floor(position.z))
+	
+	# Voxel Brush Integration for targeting logic
+	# We create a temp brush just to ask "Which voxel is this?"
+	var temp_brush = VoxelBrush.new()
+	temp_brush.shape_type = VoxelBrush.ShapeType.BOX
+	temp_brush.radius = 0.6
+	temp_brush.snap_to_grid = true
+	temp_brush.use_raycast_normal = false # Dig IN
+	
+	# Use Modifier to get the exact target voxel (consistent with visuals)
+	var target_pos = position
+	if terrain_modifier:
+		target_pos = terrain_modifier.get_target_position(temp_brush, position, hit_normal)
+	
+	var terrain_pos = Vector3i(floor(target_pos.x), floor(target_pos.y), floor(target_pos.z))
 	
 	terrain_damage[terrain_pos] = terrain_damage.get(terrain_pos, 0) + punch_dmg
 	var current_hp = TERRAIN_HP - terrain_damage[terrain_pos]
 	durability_target = terrain_pos
-	
-
 	
 	_emit_durability_hit(current_hp, TERRAIN_HP, "Terrain", durability_target)
 	
@@ -1405,7 +1438,7 @@ func _do_terrain_punch(item: Dictionary, position: Vector3) -> void:
 		var mat_id = -1
 		if terrain_manager.has_method("get_material_at"):
 			# Sample INSIDE terrain (0.3 units down from surface)
-			var sample_pos = position - Vector3(0, 0.3, 0)
+			var sample_pos = position - hit_normal * 0.3
 			mat_id = terrain_manager.get_material_at(sample_pos)
 		
 		var center = Vector3(terrain_pos) + Vector3(0.5, 0.5, 0.5)
@@ -1419,7 +1452,11 @@ func _do_terrain_punch(item: Dictionary, position: Vector3) -> void:
 		brush.snap_to_grid = true
 		
 		# Apply via modifier (respects runtime overrides if we added that logic)
-		terrain_modifier.apply_brush(brush, center, Vector3.UP)
+		if terrain_modifier:
+			terrain_modifier.apply_brush(brush, position, hit_normal)
+		else:
+			# Fallback if modifier missing (shouldn't happen)
+			terrain_manager.modify_terrain(center, 0.6, 1.0, 1, 0, -1)
 		
 		if mat_id >= 0:
 			_collect_terrain_resource(mat_id)

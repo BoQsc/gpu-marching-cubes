@@ -232,6 +232,20 @@ func _process(delta: float) -> void:
 	if attack_cooldown > 0:
 		attack_cooldown -= delta
 	
+	# Update Grid Visualizer position if active
+	if has_node("/root/DebugManager"):
+		var viz = DebugManager.grid_visualizer
+		if viz and viz.visible:
+			var hit = _raycast(10.0, false, false) # Raycast for cursor
+			var target_pos = hit.get("position", player.global_position + -player.global_transform.basis.z * 2.0) if player else Vector3.ZERO
+			
+			if not hit.is_empty():
+				# Offset slightly into the voxel to ensure correct rounding
+				var normal = hit.get("normal", Vector3.UP)
+				target_pos = target_pos - normal * 0.1
+			
+			viz.update_grid(target_pos)
+	
 	_update_held_prop(delta)
 	_check_durability_target()
 	PerformanceMonitor.end_measure("Combat System", 1.0)

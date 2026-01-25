@@ -10,6 +10,8 @@ var _vegetation_manager: Node = null
 var _chunk_manager: Node = null
 var brush_runtime_config = null
 const BrushRuntimeConfigScript = preload("res://modules/debug_module/components/brush_editor/brush_runtime_config.gd")
+const GridVisualizerScript = preload("res://modules/debug_module/components/brush_editor/grid_visualizer.gd")
+var grid_visualizer: Node3D = null
 
 
 # Tag-based logging storage
@@ -65,6 +67,12 @@ func _ready() -> void:
 	
 	brush_runtime_config = BrushRuntimeConfigScript.new()
 	add_child(brush_runtime_config)
+	
+	# Initialize Grid Visualizer
+	grid_visualizer = GridVisualizerScript.new()
+	grid_visualizer.name = "BrushGridVisualizer"
+	add_child(grid_visualizer)
+	grid_visualizer.set_enabled(false)
 
 
 func _find_managers() -> void:

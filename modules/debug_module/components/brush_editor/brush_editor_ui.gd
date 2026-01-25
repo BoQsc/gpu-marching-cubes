@@ -8,6 +8,7 @@ extends PanelContainer
 @onready var opt_shape = $MarginContainer/VBoxContainer/ShapeRow/OptionButton
 @onready var opt_mode = $MarginContainer/VBoxContainer/ModeRow/OptionButton
 @onready var check_snap = $MarginContainer/VBoxContainer/SnapRow/CheckButton
+@onready var check_show_grid = $MarginContainer/VBoxContainer/ShowGridRow/CheckButton
 
 var config: BrushRuntimeConfig
 
@@ -39,6 +40,7 @@ func _setup_options():
 func _connect_signals():
 	check_enable.toggled.connect(_on_enable_toggled)
 	check_snap.toggled.connect(_on_snap_toggled)
+	check_show_grid.toggled.connect(_on_show_grid_toggled)
 	
 	slider_radius.value_changed.connect(_on_radius_changed)
 	slider_radius.drag_ended.connect(_on_radius_drag_ended)
@@ -82,6 +84,10 @@ func _on_enable_toggled(pressed):
 
 func _on_snap_toggled(pressed):
 	if config: config.set_snap(pressed)
+
+func _on_show_grid_toggled(pressed):
+	if DebugManager.grid_visualizer:
+		DebugManager.grid_visualizer.set_enabled(pressed)
 
 func _on_radius_changed(val):
 	label_radius_val.text = "%.2f" % val

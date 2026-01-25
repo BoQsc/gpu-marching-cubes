@@ -4,7 +4,7 @@ class_name ModeEditorV2
 ## Terrain sculpting, water editing, roads, prefabs, fly mode
 
 # V2 path
-const TerrainAPIScript = preload("res://modules/world_player_v2/api/terrain_api.gd")
+
 
 # References
 var player: Node = null
@@ -15,9 +15,6 @@ var movement_component: Node = null
 var terrain_manager: Node = null
 var road_manager: Node = null
 var prefab_spawner: Node = null
-
-# API reference for terrain visualization
-var terrain_api: Node = null
 
 # Editor state
 var brush_size: float = 4.0
@@ -72,27 +69,13 @@ func _ready() -> void:
 	# Load available prefabs
 	_load_prefabs()
 	
-	# Create terrain API for selection box visualization
-	terrain_api = TerrainAPIScript.new()
-	add_child(terrain_api)
-	terrain_api.initialize(player)
+	# Load available prefabs
+	_load_prefabs()
 	
 	print("ModeEditor: Initialized")
 
 func _process(_delta: float) -> void:
-	# Update selection box when in editor terrain/water mode
-	if mode_manager and mode_manager.is_editor_mode() and terrain_api:
-		var submode = mode_manager.editor_submode
-		if submode == 0 or submode == 1: # TERRAIN or WATER
-			terrain_api.blocky_mode = blocky_mode
-			if player and player.has_method("raycast"):
-				var hit = player.raycast(100.0)
-				terrain_api.update_targeting(hit)
-		else:
-			terrain_api.hide_visuals()
-	else:
-		if terrain_api:
-			terrain_api.hide_visuals()
+	pass
 
 func _physics_process(delta: float) -> void:
 	if mode_manager and mode_manager.is_fly_active():

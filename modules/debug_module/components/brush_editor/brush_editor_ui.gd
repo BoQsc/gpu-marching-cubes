@@ -36,6 +36,7 @@ func _setup_options():
 		opt_mode.add_item("Add (Dig)", 0)
 		opt_mode.add_item("Subtract (Place)", 1)
 		opt_mode.add_item("Paint", 2)
+		opt_mode.add_item("Flatten", 3)
 
 func _connect_signals():
 	check_enable.toggled.connect(_on_enable_toggled)

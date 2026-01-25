@@ -401,7 +401,7 @@ func _apply_modification_to_buffer(rd: RenderingDevice, sid_mod, pipe_mod, densi
 	rd.compute_list_bind_uniform_set(list, set_mod, 0)
 	
 	var push_data = PackedByteArray()
-	push_data.resize(48)
+	push_data.resize(64)  # Alignment requirement: 64 bytes (padded from 52)
 	var buffer = StreamPeerBuffer.new()
 	buffer.data_array = push_data
 	
@@ -423,6 +423,7 @@ func _apply_modification_to_buffer(rd: RenderingDevice, sid_mod, pipe_mod, densi
 	buffer.put_32(mod.get("shape", 0))
 	buffer.put_32(mod.get("material_id", -1))
 	buffer.put_float(y_max_val)
+	buffer.put_32(mod.get("mode", 0)) # FLATTEN = 3
 	
 	rd.compute_list_set_push_constant(list, buffer.data_array, buffer.data_array.size())
 	rd.compute_list_dispatch(list, 9, 9, 9)

@@ -42,16 +42,19 @@ func apply_brush(brush: VoxelBrush, hit_position: Vector3, hit_normal: Vector3) 
 		final_strength = -abs(brush.strength)
 	elif brush.mode == VoxelBrush.Mode.ADD: # Dig/Air
 		final_strength = abs(brush.strength)
+	elif brush.mode == VoxelBrush.Mode.FLATTEN:
+		final_strength = brush.strength # Not critical for flatten, but keep positive
 	
 	# 3. Apply
-	# Signature: modify_terrain(pos, radius, value, shape, layer, material_id)
+	# Signature: modify_terrain(pos, radius, value, shape, layer, material_id, mode)
 	_terrain_manager.modify_terrain(
 		target_pos, 
 		brush.radius, 
 		final_strength, 
 		int(brush.shape_type), 
 		brush.target_layer,
-		brush.material_id
+		brush.material_id,
+		int(brush.mode)
 	)
 	
 	return true

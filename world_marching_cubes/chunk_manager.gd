@@ -624,7 +624,7 @@ func has_modifications_at_xz(x: int, z: int) -> bool:
 var _last_modify_time_ms: int = 0
 const MODIFY_COOLDOWN_MS: int = 100  # Max 10 modifications per second
 
-func modify_terrain(pos: Vector3, radius: float, value: float, shape: int = 0, layer: int = 0, material_id: int = -1):
+func modify_terrain(pos: Vector3, radius: float, value: float, shape: int = 0, layer: int = 0, material_id: int = -1, mode: int = 0):
 	# RATE LIMITING: Skip if called too quickly (prevents 60 GPU ops/sec when holding mouse)
 	var now_ms = Time.get_ticks_msec()
 	if now_ms - _last_modify_time_ms < MODIFY_COOLDOWN_MS:
@@ -669,7 +669,8 @@ func modify_terrain(pos: Vector3, radius: float, value: float, shape: int = 0, l
 					"value": value,
 					"shape": shape,
 					"layer": layer,
-					"material_id": material_id
+					"material_id": material_id,
+					"mode": mode
 				})
 				
 				# Only dispatch GPU task if chunk is currently loaded
@@ -697,6 +698,7 @@ func modify_terrain(pos: Vector3, radius: float, value: float, shape: int = 0, l
 								"shape": shape,
 								"layer": layer,
 								"material_id": material_id,
+								"mode": mode,
 								"start_mod_version": start_mod_version  # For stale detection
 							}
 							tasks_to_add.append(task)

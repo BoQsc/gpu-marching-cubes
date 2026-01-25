@@ -11,7 +11,9 @@ enum ShapeType {
 enum Mode {
 	ADD = 0,      # Add Density (Dig/Air)
 	SUBTRACT = 1, # Subtract Density (Place/Solid)
-	PAINT = 2     # Paint Material Only
+	PAINT = 2,    # Paint Material Only
+	FLATTEN = 3,  # Flatten to target height
+	SMOOTH = 4    # Average with neighbors
 }
 
 @export_group("Tool Settings")

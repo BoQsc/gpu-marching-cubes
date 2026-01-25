@@ -34,12 +34,13 @@ void main() {
     
     bool modified = false;
     
-    // --- MODE 3: FLATTEN (Overrides normal digging behavior) ---
-    if (params.brush_mode == 3) {
+    float check_density = density_buffer.values[index];
+    
+    // --- MODE 3: FLATTEN / MODE 5: FLATTEN (FILL) ---
+    if (params.brush_mode == 3 || params.brush_mode == 5) {
         // Flatten forces density to be distance from plane.
         // Target Y is passed in params.brush_pos.y (if we decide to override it there)
         // OR we use the brush position as the target plane.
-        // Let's assume params.brush_pos.y IS the target plane height.
         
         // Check horizontal radius
         float dist_xz = distance(world_pos.xz, params.brush_pos.xz);
@@ -54,34 +55,26 @@ void main() {
             // Standard MC convention: >0 Air, <0 Solid.
             float ideal_density = (current_y - target_height);
             
-            // Soften the transition (Multiplier makes it sharper/harder)
-            // A multiplier of 1.0 means density increases by 1.0 per meter.
             float new_density = ideal_density; 
             
-            // Blend with existing density to avoid destroying everything outside radius?
-            // No, Flatten is usually destructive.
-            // But we only want to affect the cylinder we are clicking in.
+            // Mode 5 (Fill Only): Only add solid (decrease density), never remove solid.
+            if (params.brush_mode == 5) {
+                new_density = min(density_buffer.values[index], ideal_density);
+            }
             
-            // Falloff for smooth edges? 
-            // Box/Cylinder shape logic applies here too.
-            // Let's use simple cylinder override for now.
             density_buffer.values[index] = clamp(new_density, -1.0, 1.0);
+            check_density = clamp(new_density, -1.0, 1.0);
             modified = true;
         }
     } 
     // --- MODE 4: SMOOTH ---
     else if (params.brush_mode == 4) {
-        // Smooth requires reading neighbors (kernels). 
-        // This is complex in a compute shader without shared memory or multi-pass.
-        // Simple approximation: blur with current value (weak effect) or just skip for now.
-        // Placeholder: No-op
+        // Placeholder
     }
     // --- STANDARD MODES (ADD/SUBTRACT) ---
     else {
         if (params.shape_type == 2) {
             // Column Shape (precise 1x1 vertical column, y_min to y_max)
-            // XZ: 0.5 radius centered on brush_pos.xy
-            // Y: between chunk_offset.w (y_min) and y_max
             float dist_x = abs(world_pos.x - params.brush_pos.x);
             float dist_z = abs(world_pos.z - params.brush_pos.z);
             float y_min = params.chunk_offset.w;
@@ -116,22 +109,49 @@ void main() {
         }
     }
     
+    // For material logic below:
+
+    
+
     // Write material when PLACING terrain (negative brush_value = adding solid)
-    // Or when in FLATTEN mode and creating solid (new density < 0)
+    // Or when in FLATTEN mode and creating solid/surface (density < 1.0)
+    // Or when in PAINT mode (Mode 2) - Always write if inside brush
     bool is_placing = (params.brush_value < 0.0);
-    if (params.brush_mode == 3 && density_buffer.values[index] < 0.0) is_placing = true;
+    
+    // Mode 3 (Flatten) uses Cylinder Logic in density block, check if solid
+    if (params.brush_mode == 3 && check_density < 1.0) is_placing = true;
+    
+    // Mode 5 (Fill) GEOMETRIC FORCE PAINT:
+    if (params.brush_mode == 5) {
+        float target_height = params.brush_pos.y;
+        if (world_pos.y <= target_height + 1.5) {
+             is_placing = true;
+        }
+    }
+
+    // Mode 2 (Paint) FORCE PAINT:
+    if (params.brush_mode == 2) {
+        is_placing = true;
+    }
     
     if (params.material_id >= 0 && is_placing) {
-        vec3 dist_vec = abs(world_pos - params.brush_pos.xyz);
-        float max_dist = max(dist_vec.x, max(dist_vec.y, dist_vec.z)); // Box approx for speed
-        
         bool should_write = false;
         
-        // Flatten mode needs slightly wider material application to cover the floor
-        float check_radius = params.brush_pos.w;
-        if (params.brush_mode == 3) check_radius += 0.5;
+        if (params.brush_mode == 3 || params.brush_mode == 5 || params.brush_mode == 2) {
+             // Cylinder Check (XZ only) for Flatten AND Paint
+             // Standard Paint brushes usually act as cylinders/columns in map editors
+             // But if we want Sphere paint, we'd use else.
+             // Let's use Cylinder for now to be safe with height differences
+             float dist_xz = distance(world_pos.xz, params.brush_pos.xz);
+             if (dist_xz <= params.brush_pos.w + 0.5) should_write = true;
+        } else {
+             // Standard 3D Check checking for other modes
+             vec3 dist_vec = abs(world_pos - params.brush_pos.xyz);
+             float max_dist = max(dist_vec.x, max(dist_vec.y, dist_vec.z)); // Box approx
+             if (max_dist <= params.brush_pos.w) should_write = true;
+        }
         
-        if (max_dist <= check_radius) {
+        if (should_write) {
              material_buffer.values[index] = uint(params.material_id);
         }
     }

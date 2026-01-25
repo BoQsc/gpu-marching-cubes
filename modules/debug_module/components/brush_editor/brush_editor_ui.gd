@@ -12,12 +12,16 @@ extends PanelContainer
 
 var config: BrushRuntimeConfig
 
+@onready var vbox_container = $MarginContainer/VBoxContainer
+var opt_material: OptionButton
+
 func _ready():
 	# Populate options (safe to do before finding nodes)
 	# Wait for children to be ready
 	await get_tree().process_frame
 	
 	_setup_options()
+	_inject_material_ui() # Programmatically add Material Row
 	
 	if DebugManager.brush_runtime_config:
 		config = DebugManager.brush_runtime_config
@@ -25,6 +29,54 @@ func _ready():
 		_update_ui_from_config()
 	
 	_connect_signals()
+
+func _inject_material_ui():
+	# Check if already added
+	if vbox_container.has_node("MaterialRow"):
+		return
+		
+	var h_box = HBoxContainer.new()
+	h_box.name = "MaterialRow"
+	
+	var label = Label.new()
+	label.text = "Material"
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h_box.add_child(label)
+	
+	opt_material = OptionButton.new()
+	opt_material.name = "OptionButton"
+	opt_material.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	
+	opt_material.add_item("Don't Change (-1)", 0)
+	opt_material.set_item_metadata(0, -1)
+	
+	opt_material.add_item("Grass (0)", 1)
+	opt_material.set_item_metadata(1, 0)
+	
+	opt_material.add_item("Rock (1)", 2)
+	opt_material.set_item_metadata(2, 1)
+	
+	opt_material.add_item("Stone (2)", 3)
+	opt_material.set_item_metadata(3, 2)
+	
+	opt_material.add_item("Sand (3)", 4)
+	opt_material.set_item_metadata(4, 3)
+	
+	opt_material.add_item("Snow (4)", 5)
+	opt_material.set_item_metadata(5, 4)
+	
+	opt_material.add_item("Road (5)", 6)
+	opt_material.set_item_metadata(6, 5)
+	
+	h_box.add_child(opt_material)
+	vbox_container.add_child(h_box)
+	
+	# Connect signal
+	opt_material.item_selected.connect(_on_material_selected)
+
+func _on_material_selected(idx):
+	var mat_id = opt_material.get_item_metadata(idx)
+	if config: config.set_material_id(mat_id)
 
 func _setup_options():
 	if opt_shape.item_count == 0:
@@ -37,6 +89,7 @@ func _setup_options():
 		opt_mode.add_item("Subtract (Place)", 1)
 		opt_mode.add_item("Paint", 2)
 		opt_mode.add_item("Flatten", 3)
+		opt_mode.add_item("Flatten (Fill)", 5)
 
 func _connect_signals():
 	check_enable.toggled.connect(_on_enable_toggled)
@@ -77,8 +130,19 @@ func _update_ui_from_config():
 	opt_shape.set_block_signals(false)
 	
 	opt_mode.set_block_signals(true)
-	opt_mode.selected = config.mode
+	opt_mode.selected = opt_mode.get_item_index(config.mode)
 	opt_mode.set_block_signals(false)
+	
+	if opt_material:
+		opt_material.set_block_signals(true)
+		# Find index for value
+		var target_idx = 0
+		for i in range(opt_material.item_count):
+			if opt_material.get_item_metadata(i) == config.material_id:
+				target_idx = i
+				break
+		opt_material.selected = target_idx
+		opt_material.set_block_signals(false)
 
 func _on_enable_toggled(pressed):
 	if config: config.override_enabled = pressed
@@ -107,7 +171,8 @@ func _on_shape_selected(idx):
 	if config: config.set_shape(idx)
 
 func _on_mode_selected(idx):
-	if config: config.set_mode(idx)
+	var id = opt_mode.get_item_id(idx)
+	if config: config.set_mode(id)
 
 func _on_config_changed():
 	_update_ui_from_config()

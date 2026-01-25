@@ -231,7 +231,7 @@ void fragment() {
 		// Non-surface biomes: use mat_id directly (no blending)
 		if (mat_id == 0) base_color = col_grass;
 		else if (mat_id == 1) base_color = col_stone;
-		else if (mat_id == 2) base_color = col_stone * vec3(1.2, 1.0, 0.5);  // Ore
+		else if (mat_id == 2) base_color = col_rock;  // Ore/Rock (Use Cliff Texture for visibility)
 		else if (mat_id == 3) base_color = col_sand;
 		else if (mat_id == 4) base_color = col_stone;  // Gravel
 		else if (mat_id == 5) base_color = col_snow;
@@ -250,7 +250,7 @@ void fragment() {
 			else if (base_id == 6) base_color = col_road;
 			else if (base_id == 9) base_color = col_stone * vec3(0.7, 0.65, 0.6);  // Granite
 			else base_color = col_stone;
-		} else base_color = col_grass;
+		} else base_color = vec3(1.0, 0.0, 0.0); // RED = Unknown/Fallback Material ID
 	}
 
 	// Slope needed for road and weather effects

@@ -332,9 +332,19 @@ func _do_prop_primary(item: Dictionary) -> void:
 
 # ============================================================================
 # PROP GRAB/DROP SYSTEM
-# ============================================================================
+
+
+# Flatten Tool State
+var _flatten_lock_y: float = 0.0
+var _flatten_active: bool = false
 
 func _input(event: InputEvent) -> void:
+	# Reset flatten lock on release
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		if _flatten_active:
+			print("COMBAT DEBUG: Flatten Lock RESET by Input")
+		_flatten_active = false
+
 	# Only process in PLAY mode (if mode_manager is null, assume PLAY mode)
 	if mode_manager and not mode_manager.is_play_mode():
 		return
@@ -754,6 +764,10 @@ func do_tool_attack(item: Dictionary) -> void:
 		var use_durability = false
 		if "pickaxe" in item_id and has_node("/root/PickaxeDurabilityConfig"):
 			use_durability = get_node("/root/PickaxeDurabilityConfig").enabled
+		
+		# Override: If Brush Editor is active, DISABLE durability (Instant Mine)
+		if has_node("/root/DebugManager") and DebugManager.brush_runtime_config and DebugManager.brush_runtime_config.override_enabled:
+			use_durability = false
 			
 		# Voxel Brush Integration for targeting logic
 		var brush = _get_mining_brush(item_id)
@@ -1029,9 +1043,31 @@ func _execute_terrain_mine(position: Vector3, hit_normal: Vector3, item_id: Stri
 		override_behavior.shape_type = config.shape_type
 		override_behavior.mode = config.mode
 		override_behavior.snap_to_grid = config.snap_to_grid
+		override_behavior.material_id = config.material_id
+		
+		# HEIGHT LOCK for Flatten/FlattenFill (3 or 5)
+		var target_pos = position
+		if config.mode == 3 or config.mode == 5:
+			# Verify button is still pressed, otherwise reset lock
+			if _flatten_active and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+				_flatten_active = false
+			
+			if not _flatten_active:
+				_flatten_active = true
+				_flatten_lock_y = position.y
+				# If snapping is enabled, lock to the snapped Y?
+				# The shader uses target_pos.y as the plane.
+				if config.snap_to_grid:
+					_flatten_lock_y = floor(position.y) + 0.5
+			target_pos.y = _flatten_lock_y
+			
+			# Flatten passes Y via position.y (standard)
+			# But verify if shader expects it elsewhere. Shader params.brush_pos.y is used.
+			# TerrainModifier passes 'pos' to manager -> manager passes 'brush_pos' -> shader uses params.brush_pos.
+			# So updating target_pos is correct.
 		
 		# Apply generic behavior
-		terrain_modifier.apply_brush(override_behavior, position, hit_normal)
+		terrain_modifier.apply_brush(override_behavior, target_pos, hit_normal)
 		return
 
 	# Resolve behavior via Helper

@@ -42,7 +42,7 @@ func apply_brush(brush: VoxelBrush, hit_position: Vector3, hit_normal: Vector3) 
 		final_strength = -abs(brush.strength)
 	elif brush.mode == VoxelBrush.Mode.ADD: # Dig/Air
 		final_strength = abs(brush.strength)
-	elif brush.mode == VoxelBrush.Mode.FLATTEN:
+	elif brush.mode == VoxelBrush.Mode.FLATTEN or brush.mode == VoxelBrush.Mode.FLATTEN_FILL:
 		final_strength = brush.strength # Not critical for flatten, but keep positive
 	
 	# 3. Apply

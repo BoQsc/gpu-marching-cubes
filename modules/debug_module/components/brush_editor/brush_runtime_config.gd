@@ -33,3 +33,7 @@ func set_mode(val: int) -> void:
 func set_snap(val: bool) -> void:
 	snap_to_grid = val
 	settings_changed.emit()
+
+func set_material_id(val: int) -> void:
+	material_id = val
+	settings_changed.emit()

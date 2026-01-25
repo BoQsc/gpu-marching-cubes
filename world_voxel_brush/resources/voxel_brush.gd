@@ -13,7 +13,8 @@ enum Mode {
 	SUBTRACT = 1, # Subtract Density (Place/Solid)
 	PAINT = 2,    # Paint Material Only
 	FLATTEN = 3,  # Flatten to target height
-	SMOOTH = 4    # Average with neighbors
+	SMOOTH = 4,   # Average with neighbors
+	FLATTEN_FILL = 5 # Flatten (Fill Only)
 }
 
 @export_group("Tool Settings")

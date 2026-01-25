@@ -108,3 +108,15 @@ text = "Mode"
 [node name="OptionButton" type="OptionButton" parent="MarginContainer/VBoxContainer/ModeRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="SnapRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/SnapRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Snap to Grid"
+
+[node name="CheckButton" type="CheckButton" parent="MarginContainer/VBoxContainer/SnapRow"]
+layout_mode = 2
+size_flags_horizontal = 8

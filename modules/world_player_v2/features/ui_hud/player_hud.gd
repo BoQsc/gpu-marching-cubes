@@ -71,12 +71,7 @@ func _ready() -> void:
 			collision_toggle.button_pressed = get_node("/root/CollisionDebugger").enabled
 	
 	# Connect pickaxe dig mode toggle
-	var pickaxe_toggle = game_menu.get_node_or_null("PickaxeDigModeToggle")
-	if pickaxe_toggle:
-		pickaxe_toggle.toggled.connect(_on_pickaxe_dig_mode_toggled)
-		# Sync with current state
-		if has_node("/root/PickaxeDigConfig"):
-			pickaxe_toggle.button_pressed = get_node("/root/PickaxeDigConfig").enabled
+
 	
 	# Connect pickaxe durability toggle
 	var durability_toggle = game_menu.get_node_or_null("PickaxeDurabilityToggle")
@@ -118,15 +113,7 @@ func _ready() -> void:
 	
 
 	
-	var radius_slider = game_menu.get_node_or_null("MiningRadiusSlider")
-	var radius_label = game_menu.get_node_or_null("MiningRadiusLabel")
-	if radius_slider:
-		radius_slider.value_changed.connect(_on_mining_radius_changed.bind(radius_label))
-		# Sync with config
-		if has_node("/root/PickaxeDigConfig"):
-			radius_slider.value = get_node("/root/PickaxeDigConfig").mining_radius
-			if radius_label:
-				radius_label.text = "Mining Radius: %.2f" % radius_slider.value
+
 	
 	# Connect QuickSave button (F5)
 	var quicksave_btn = game_menu.get_node_or_null("QuickSaveButton")

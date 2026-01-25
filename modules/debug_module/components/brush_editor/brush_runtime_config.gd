@@ -29,3 +29,7 @@ func set_shape(val: int) -> void:
 func set_mode(val: int) -> void:
 	mode = val
 	settings_changed.emit()
+
+func set_snap(val: bool) -> void:
+	snap_to_grid = val
+	settings_changed.emit()

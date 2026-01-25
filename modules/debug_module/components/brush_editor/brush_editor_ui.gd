@@ -7,6 +7,7 @@ extends PanelContainer
 @onready var label_strength_val = $MarginContainer/VBoxContainer/StrengthRow/ValueLabel
 @onready var opt_shape = $MarginContainer/VBoxContainer/ShapeRow/OptionButton
 @onready var opt_mode = $MarginContainer/VBoxContainer/ModeRow/OptionButton
+@onready var check_snap = $MarginContainer/VBoxContainer/SnapRow/CheckButton
 
 var config: BrushRuntimeConfig
 
@@ -37,6 +38,7 @@ func _setup_options():
 
 func _connect_signals():
 	check_enable.toggled.connect(_on_enable_toggled)
+	check_snap.toggled.connect(_on_snap_toggled)
 	
 	slider_radius.value_changed.connect(_on_radius_changed)
 	slider_radius.drag_ended.connect(_on_radius_drag_ended)
@@ -52,6 +54,10 @@ func _update_ui_from_config():
 	check_enable.set_block_signals(true)
 	check_enable.button_pressed = config.override_enabled
 	check_enable.set_block_signals(false)
+	
+	check_snap.set_block_signals(true)
+	check_snap.button_pressed = config.snap_to_grid
+	check_snap.set_block_signals(false)
 	
 	slider_radius.set_block_signals(true)
 	slider_radius.value = config.radius
@@ -73,6 +79,9 @@ func _update_ui_from_config():
 
 func _on_enable_toggled(pressed):
 	if config: config.override_enabled = pressed
+
+func _on_snap_toggled(pressed):
+	if config: config.set_snap(pressed)
 
 func _on_radius_changed(val):
 	label_radius_val.text = "%.2f" % val

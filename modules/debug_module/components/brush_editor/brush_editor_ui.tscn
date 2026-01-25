@@ -1,0 +1,110 @@
+[gd_scene load_steps=2 format=3 uid="uid://brush_editor_ui_001"]
+
+[ext_resource type="Script" path="res://modules/debug_module/components/brush_editor/brush_editor_ui.gd" id="1_script"]
+
+[node name="BrushEditorUI" type="PanelContainer"]
+custom_minimum_size = Vector2(250, 0)
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -250.0
+offset_bottom = 200.0
+grow_horizontal = 0
+script = ExtResource("1_script")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Brush Editor"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="EnableRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/EnableRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Override"
+
+[node name="CheckButton" type="CheckButton" parent="MarginContainer/VBoxContainer/EnableRow"]
+layout_mode = 2
+size_flags_horizontal = 8
+
+[node name="RadiusRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/RadiusRow"]
+layout_mode = 2
+text = "Radius"
+
+[node name="HSlider" type="HSlider" parent="MarginContainer/VBoxContainer/RadiusRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.5
+max_value = 10.0
+step = 0.1
+value = 2.0
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/RadiusRow"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+text = "2.00"
+horizontal_alignment = 2
+
+[node name="StrengthRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/StrengthRow"]
+layout_mode = 2
+text = "Speed"
+
+[node name="HSlider" type="HSlider" parent="MarginContainer/VBoxContainer/StrengthRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 50.0
+step = 1.0
+value = 10.0
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/StrengthRow"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+text = "10.0"
+horizontal_alignment = 2
+
+[node name="ShapeRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ShapeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Shape"
+
+[node name="OptionButton" type="OptionButton" parent="MarginContainer/VBoxContainer/ShapeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ModeRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Mode"
+
+[node name="OptionButton" type="OptionButton" parent="MarginContainer/VBoxContainer/ModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3

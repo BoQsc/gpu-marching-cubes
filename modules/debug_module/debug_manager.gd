@@ -8,6 +8,8 @@ var addon_presets: Array[DebugPreset] = []
 # Cached references to managers (found on ready)
 var _vegetation_manager: Node = null
 var _chunk_manager: Node = null
+var brush_runtime_config = null
+const BrushRuntimeConfigScript = preload("res://modules/debug_module/components/brush_editor/brush_runtime_config.gd")
 
 
 # Tag-based logging storage
@@ -58,7 +60,11 @@ func _ready() -> void:
 				print("[DebugManager] Loaded addon preset: ", path)
 	
 	call_deferred("_find_managers")
+	call_deferred("_find_managers")
 	call_deferred("_apply_current_preset")
+	
+	brush_runtime_config = BrushRuntimeConfigScript.new()
+	add_child(brush_runtime_config)
 
 
 func _find_managers() -> void:

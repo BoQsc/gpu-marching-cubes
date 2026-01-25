@@ -996,6 +996,20 @@ func _execute_terrain_mine(position: Vector3, hit_normal: Vector3, item_id: Stri
 	if not terrain_manager or not tool_registry or not terrain_modifier:
 		return
 
+	# Runtime Override (Brush Editor)
+	if has_node("/root/DebugManager") and DebugManager.brush_runtime_config and DebugManager.brush_runtime_config.override_enabled:
+		var config = DebugManager.brush_runtime_config
+		var override_behavior = VoxelBrush.new()
+		override_behavior.radius = config.radius
+		override_behavior.strength = config.strength
+		override_behavior.shape_type = config.shape_type
+		override_behavior.mode = config.mode
+		override_behavior.snap_to_grid = config.snap_to_grid
+		
+		# Apply generic behavior
+		terrain_modifier.apply_brush(override_behavior, position, hit_normal)
+		return
+
 	# Resolve behavior via Registry
 	var behavior = null
 	

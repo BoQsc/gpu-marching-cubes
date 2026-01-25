@@ -144,7 +144,17 @@ func _ready() -> void:
 	if target_material_label:
 		target_material_label.visible = false  # Hidden until debug preset enables it
 	
+	_setup_brush_editor()
 	_setup_visual_overlays()
+
+func _setup_brush_editor() -> void:
+	if not game_menu: return
+	
+	var brush_ui_scene = load("res://modules/debug_module/components/brush_editor/brush_editor_ui.tscn")
+	if brush_ui_scene:
+		var brush_ui = brush_ui_scene.instantiate()
+		game_menu.add_child(brush_ui)
+		print("PlayerHUD: Brush Editor UI added to GameMenu")
 
 func _setup_visual_overlays() -> void:
 	if not underwater_overlay:

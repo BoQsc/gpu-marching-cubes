@@ -8,8 +8,8 @@ const PRESET_PATH = "res://world_voxel_brush/resources/presets/"
 
 func _ready() -> void:
     # Ensure presets folder exists (conceptually)
-    # Default assignments
-    call_deferred("_load_defaults")
+    # Default assignments - load immediately to prevent race conditions
+    _load_defaults()
 
 func _load_defaults() -> void:
     # Load default presets

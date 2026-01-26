@@ -62,11 +62,11 @@ func _inject_material_ui():
 	opt_material.add_item("Sand (3)", 4)
 	opt_material.set_item_metadata(4, 3)
 	
-	opt_material.add_item("Snow (4)", 5)
-	opt_material.set_item_metadata(5, 4)
+	opt_material.add_item("Snow (5)", 5)
+	opt_material.set_item_metadata(5, 5)
 	
-	opt_material.add_item("Road (5)", 6)
-	opt_material.set_item_metadata(6, 5)
+	opt_material.add_item("Road (6)", 6)
+	opt_material.set_item_metadata(6, 6)
 	
 	h_box.add_child(opt_material)
 	vbox_container.add_child(h_box)

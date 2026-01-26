@@ -56,15 +56,26 @@ void main() {
             float ideal_density = (current_y - target_height);
             
             float new_density = ideal_density; 
+            float old_density = density_buffer.values[index];
             
             // Mode 5 (Fill Only): Only add solid (decrease density), never remove solid.
             if (params.brush_mode == 5) {
-                new_density = min(density_buffer.values[index], ideal_density);
+                new_density = min(old_density, ideal_density);
             }
             
             density_buffer.values[index] = clamp(new_density, -1.0, 1.0);
             check_density = clamp(new_density, -1.0, 1.0);
-            modified = true;
+            
+            // Only flag as modified (and thus trigger painting) if we ACTUALLY added solid
+            // (new_density < old_density). Use epsilon for float safety.
+            if (new_density < old_density - 0.001) {
+                modified = true;
+            } else {
+                // If using Mode 3 (Flatten) which can remove solid, we also want to mark modified 
+                if (params.brush_mode == 3 && abs(new_density - old_density) > 0.001) {
+                    modified = true;
+                }
+            }
         }
     } 
     // --- MODE 4: SMOOTH ---
@@ -124,8 +135,39 @@ void main() {
     // Mode 5 (Fill) GEOMETRIC FORCE PAINT:
     if (params.brush_mode == 5) {
         float target_height = params.brush_pos.y;
+        // Only paint if:
+        // 1. Within height target
+        // 2. Was previously AIR (density > -0.5). We use -0.5 loosely to allow repainting surface skin,
+        //    but prevent repainting deep underground stone.
+        //    Actually, precise check: If we are modifying density, we paint.
+        //    "check_density" variable holds the density AFTER modification!  
+        //    We need the OLD density.
+        
+        // Wait, earlier we do: density_buffer.values[index] = ...
+        // We lost the old value? 
+        // No, we can re-read it but we already overwrote it in line 65.
+        // But we have `ideal_density` vs `check_density`.
+        
+        // BETTER LOGIC:
+        // If we "Filled" (decreased density), we paint.
+        // In the density modification block (line 60), for Mode 5:
+        // new_density = min(old, ideal).
+        // If ideal < old, we changed it.
+        // Since we don't have 'old' here easily without reading twice or caching variable...
+        // Let's rely on the geometric check but restricting it to Surface.
+        
+        // User complaint: "Paints instead of applying to most modified parts".
+        // Means: Don't paint the whole cylinder column. Paint only the fill.
+        
+        // If we check: is world_pos.y > (current_terrain_height)? 
+        // Hard to know current terrain height.
+        
         if (world_pos.y <= target_height + 1.5) {
-             is_placing = true;
+             // Simple Heuristic:
+             // Only paint if the brush actually touched this voxel? 
+             // density buffer WAS modified?
+             // `modified` flag is true if we touched the density.
+             if (modified) is_placing = true;
         }
     }
 
@@ -139,11 +181,14 @@ void main() {
         
         if (params.brush_mode == 3 || params.brush_mode == 5 || params.brush_mode == 2) {
              // Cylinder Check (XZ only) for Flatten AND Paint
-             // Standard Paint brushes usually act as cylinders/columns in map editors
-             // But if we want Sphere paint, we'd use else.
-             // Let's use Cylinder for now to be safe with height differences
              float dist_xz = distance(world_pos.xz, params.brush_pos.xz);
-             if (dist_xz <= params.brush_pos.w + 0.5) should_write = true;
+             if (dist_xz <= params.brush_pos.w + 0.5) {
+                 // ADDED: Height check to prevent infinite vertical column painting
+                 // Only paint if within reasonable vertical distance of the brush/target
+                 if (abs(world_pos.y - params.brush_pos.y) < 2.5) {
+                     should_write = true;
+                 }
+             }
         } else {
              // Standard 3D Check checking for other modes
              vec3 dist_vec = abs(world_pos - params.brush_pos.xyz);
@@ -152,7 +197,15 @@ void main() {
         }
         
         if (should_write) {
-             material_buffer.values[index] = uint(params.material_id);
+             // AUTOMATIC COMPATIBILITY:
+             // If ID is < 100 (Procedural ID), add +100 to mark as Player Placed.
+             // This ensures the Terrain Shader renders it explicitly (e.g. Sand)
+             // instead of treating it as Procedural Biome (Grass/Sand mix).
+             int final_mat_id = params.material_id;
+             if (final_mat_id >= 0 && final_mat_id < 100) {
+                 final_mat_id += 100;
+             }
+             material_buffer.values[index] = uint(final_mat_id);
         }
     }
     

@@ -44,11 +44,18 @@ func _ready() -> void:
 	modifier = TerrainModifier.new()
 	add_child(modifier)
 	
-	brush = VoxelBrush.new()
-	brush.shape_type = VoxelBrush.ShapeType.BOX
-	brush.radius = 0.5
-	brush.strength = 10.0
-	brush.snap_to_grid = true
+	# Load default brushes from Registry if available
+	if has_node("/root/CombatSystem/TerrainToolRegistry"):
+		var registry = get_node("/root/CombatSystem/TerrainToolRegistry")
+		brush = registry.get_tool_behavior("terraformer_place") # Default to place
+	
+	if not brush:
+		# Fallback if registry not found (standalone test)
+		brush = VoxelBrush.new()
+		brush.shape_type = VoxelBrush.ShapeType.BOX
+		brush.radius = 0.5
+		brush.strength = 10.0
+		brush.snap_to_grid = true
 	
 	call_deferred("_create_selection_box")
 	
@@ -108,6 +115,14 @@ func _get_mode_name() -> String:
 func _update_cursor_color() -> void:
 	if selection_box and selection_box.material_override:
 		selection_box.material_override.albedo_color = COLOR_DIG if dig_mode else COLOR_PLACE
+	
+	# Update brush reference based on mode
+	if has_node("/root/CombatSystem/TerrainToolRegistry"):
+		var registry = get_node("/root/CombatSystem/TerrainToolRegistry")
+		var tool_id = "terraformer_dig" if dig_mode else "terraformer_place"
+		var new_brush = registry.get_tool_behavior(tool_id)
+		if new_brush:
+			brush = new_brush
 
 # ============================================================================
 # INPUT HANDLING
@@ -198,9 +213,7 @@ func _update_targeting() -> void:
 	
 	has_target = true
 	
-	# Update brush config for targeting calculation
-	brush.mode = VoxelBrush.Mode.ADD if dig_mode else VoxelBrush.Mode.SUBTRACT
-	brush.use_raycast_normal = not dig_mode # Place uses normal offset
+	# Current brush is already updated by _update_cursor_color via mode toggle
 	
 	# Get target from modifier helper
 	var target_pos = modifier.get_target_position(brush, hit.position, hit.normal)
@@ -233,25 +246,28 @@ func do_secondary_action() -> void:
 	_apply_action(not dig_mode)
 
 func _apply_action(is_dig: bool) -> void:
-	# Configure brush
-	brush.mode = VoxelBrush.Mode.ADD if is_dig else VoxelBrush.Mode.SUBTRACT
-	brush.use_raycast_normal = not is_dig
+	# Ensure brush matches mode (in case called from secondary)
+	var action_brush = brush
+	if has_node("/root/CombatSystem/TerrainToolRegistry"):
+		var registry = get_node("/root/CombatSystem/TerrainToolRegistry")
+		var tool_id = "terraformer_dig" if is_dig else "terraformer_place"
+		var fetched = registry.get_tool_behavior(tool_id)
+		if fetched: action_brush = fetched
 	
+	# Override material for placement
 	if not is_dig:
 		# Place mode: set material (+100 for player placed)
 		if not materials.is_empty():
-			brush.material_id = materials[material_index].id + 100
+			action_brush.material_id = materials[material_index].id + 100
 		else:
-			brush.material_id = 100 # Fallback
+			action_brush.material_id = 100 # Fallback
 	else:
-		brush.material_id = -1
+		action_brush.material_id = -1
 	
 	# Re-raycast to get fresh hit normal for application
 	var hit = _raycast(RAYCAST_DISTANCE)
 	if not hit.is_empty():
-		modifier.apply_brush(brush, hit.position, hit.normal)
-		var action = "DIG" if is_dig else "PLACE"
-		print("SHOVEL: %s at %s" % [action, selection_box.global_position])
+		modifier.apply_brush(action_brush, hit.position, hit.normal)
 
 # ============================================================================
 # RAYCAST

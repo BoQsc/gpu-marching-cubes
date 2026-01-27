@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="VoxelBrush" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="VoxelBrush" format=3 uid="uid://x3xf1p3lomvq"]
 
-[ext_resource type="Script" path="res://world_voxel_brush/resources/voxel_brush.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://benwm7g8siaax" path="res://world_voxel_brush/resources/voxel_brush.gd" id="1_script"]
 
 [resource]
 script = ExtResource("1_script")
@@ -9,6 +9,3 @@ shape_type = 1
 radius = 0.6
 strength = 1.0
 snap_to_grid = true
-raycast_distance = 3.5
-use_raycast_normal = false
-material_id = -1

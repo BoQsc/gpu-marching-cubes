@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3 uid="uid://b8dotn0iuivrd"]
+[gd_scene format=3 uid="uid://b8dotn0iuivrd"]
 
 [ext_resource type="Script" uid="uid://xuh2opiptmhm" path="res://modules/world_player_v2/player.gd" id="1_player"]
 [ext_resource type="Script" uid="uid://c8y54d5s4ct3h" path="res://modules/world_player_v2/features/body_movement/player_movement.gd" id="2_movement"]
@@ -19,87 +19,87 @@
 [ext_resource type="Script" uid="uid://gd7lpgjr1uht" path="res://modules/world_player_v2/features/tool_combat/weapons/first_person_pickaxe.gd" id="18_pickaxe"]
 [ext_resource type="Script" uid="uid://ktyjo5q31em4" path="res://modules/world_player_v2/features/tool_combat/weapons/first_person_shovel.gd" id="18_shovel"]
 [ext_resource type="Script" uid="uid://twk217xf32bm" path="res://modules/world_player_v2/features/tool_terrain/terrain_interaction.gd" id="18_terrain"]
-[ext_resource type="Script" uid="uid://btccyk8is8eo6" path="res://modules/world_player_v2/features/tool_combat/weapons/first_person_terraformer.gd" id="19_terraformer"]
+[ext_resource type="Script" uid="uid://8kha7n3ifrt2" path="res://modules/world_player_v2/features/tool_combat/weapons/first_person_terraformer.gd" id="19_terraformer"]
 [ext_resource type="Script" uid="uid://bskmyabeyh05o" path="res://modules/world_player_v2/features/body_movement/player_crouch.gd" id="20_crouch"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
 height = 1.8
 
-[node name="WorldPlayerV2" type="CharacterBody3D" groups=["player"]]
+[node name="WorldPlayerV2" type="CharacterBody3D" unique_id=1145432312 groups=["player"]]
 collision_layer = 3
 collision_mask = 141
 script = ExtResource("1_player")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1771111857]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_1")
 
-[node name="Camera3D" type="Camera3D" parent="."]
+[node name="Camera3D" type="Camera3D" parent="." unique_id=778759722]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
 current = true
 
-[node name="Components" type="Node" parent="."]
+[node name="Components" type="Node" parent="." unique_id=753265603]
 
-[node name="Movement" type="Node" parent="Components"]
+[node name="Movement" type="Node" parent="Components" unique_id=216006536]
 script = ExtResource("2_movement")
 
-[node name="Crouch" type="Node" parent="Components"]
+[node name="Crouch" type="Node" parent="Components" unique_id=825043402]
 script = ExtResource("20_crouch")
 
-[node name="Camera" type="Node" parent="Components"]
+[node name="Camera" type="Node" parent="Components" unique_id=1313274990]
 script = ExtResource("3_camera")
 
-[node name="Interaction" type="Node" parent="Components"]
+[node name="Interaction" type="Node" parent="Components" unique_id=876709304]
 script = ExtResource("11_interaction")
 
-[node name="Combat" type="Node" parent="Components"]
+[node name="Combat" type="Node" parent="Components" unique_id=2088525073]
 script = ExtResource("12_combat")
 
-[node name="FirstPersonArms" type="Node" parent="Components"]
+[node name="FirstPersonArms" type="Node" parent="Components" unique_id=1788596426]
 script = ExtResource("15_arms")
 
-[node name="FirstPersonPistol" type="Node" parent="Components"]
+[node name="FirstPersonPistol" type="Node" parent="Components" unique_id=1541057732]
 script = ExtResource("16_pistol")
 
-[node name="FirstPersonAxe" type="Node" parent="Components"]
+[node name="FirstPersonAxe" type="Node" parent="Components" unique_id=1675233546]
 script = ExtResource("17_axe")
 
-[node name="FirstPersonPickaxe" type="Node" parent="Components"]
+[node name="FirstPersonPickaxe" type="Node" parent="Components" unique_id=689144589]
 script = ExtResource("18_pickaxe")
 
-[node name="FirstPersonShovel" type="Node" parent="Components"]
+[node name="FirstPersonShovel" type="Node" parent="Components" unique_id=140445246]
 script = ExtResource("18_shovel")
 
-[node name="FirstPersonTerraformer" type="Node" parent="Components"]
+[node name="FirstPersonTerraformer" type="Node" parent="Components" unique_id=50329000]
 script = ExtResource("19_terraformer")
 
-[node name="Systems" type="Node" parent="."]
+[node name="Systems" type="Node" parent="." unique_id=470837020]
 
-[node name="Hotbar" type="Node" parent="Systems"]
+[node name="Hotbar" type="Node" parent="Systems" unique_id=408600286]
 script = ExtResource("4_hotbar")
 
-[node name="ModeManager" type="Node" parent="Systems"]
+[node name="ModeManager" type="Node" parent="Systems" unique_id=1352153365]
 script = ExtResource("5_mode_manager")
 
-[node name="ItemUseRouter" type="Node" parent="Systems"]
+[node name="ItemUseRouter" type="Node" parent="Systems" unique_id=555997389]
 script = ExtResource("6_item_router")
 
-[node name="Inventory" type="Node" parent="Systems"]
+[node name="Inventory" type="Node" parent="Systems" unique_id=1973636899]
 script = ExtResource("10_inventory")
 
-[node name="Modes" type="Node" parent="."]
+[node name="Modes" type="Node" parent="." unique_id=517993410]
 
-[node name="CombatSystem" type="Node" parent="Modes"]
+[node name="CombatSystem" type="Node" parent="Modes" unique_id=1199611345]
 script = ExtResource("7_combat_system")
 
-[node name="ModeBuild" type="Node" parent="Modes"]
+[node name="ModeBuild" type="Node" parent="Modes" unique_id=167822601]
 script = ExtResource("8_mode_build")
 
-[node name="ModeEditor" type="Node" parent="Modes"]
+[node name="ModeEditor" type="Node" parent="Modes" unique_id=721504567]
 script = ExtResource("9_mode_editor")
 
-[node name="TerrainInteraction" type="Node" parent="Modes"]
+[node name="TerrainInteraction" type="Node" parent="Modes" unique_id=274530487]
 script = ExtResource("18_terrain")
 
-[node name="PlayerHUD" parent="." instance=ExtResource("13_hud")]
+[node name="PlayerHUD" parent="." unique_id=1189105467 instance=ExtResource("13_hud")]

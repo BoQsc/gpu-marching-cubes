@@ -1,10 +1,10 @@
-[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="VoxelMaterial" format=3 uid="uid://bnpg3iyvjcyv4"]
 
-[ext_resource type="Script" path="res://world_voxel_materials/resources/voxel_material.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://bu8b54bsefcgd" path="res://world_voxel_materials/resources/voxel_material.gd" id="1_script"]
 
 [resource]
 script = ExtResource("1_script")
 id = 5
 display_name = "Snow"
-color = Color(0.95, 0.95, 1.0, 1)
-input_key = 54 # KEY_6
+color = Color(0.95, 0.95, 1, 1)
+input_key = 54

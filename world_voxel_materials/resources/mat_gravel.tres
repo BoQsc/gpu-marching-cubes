@@ -1,10 +1,10 @@
-[gd_resource type="Resource" script_class="VoxelMaterial" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="VoxelMaterial" format=3 uid="uid://c6sqhktj35w5y"]
 
-[ext_resource type="Script" path="res://world_voxel_materials/resources/voxel_material.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://bu8b54bsefcgd" path="res://world_voxel_materials/resources/voxel_material.gd" id="1_script"]
 
 [resource]
 script = ExtResource("1_script")
 id = 4
 display_name = "Gravel"
 color = Color(0.4, 0.4, 0.4, 1)
-input_key = 53 # KEY_5
+input_key = 53
